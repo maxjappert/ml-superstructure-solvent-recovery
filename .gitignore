@@ -1,0 +1,61 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+*.egg
+build/
+dist/
+.eggs/
+
+# Virtual environments
+venv/
+.venv/
+env/
+ENV/
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb_checkpoints
+
+# PyTorch
+*.pt
+*.pth
+*.ckpt
+*.safetensors
+checkpoints/
+runs/
+lightning_logs/
+wandb/
+mlruns/
+*.onnx
+
+# Data files
+*.csv
+*.tsv
+*.parquet
+*.json
+*.jsonl
+*.h5
+*.hdf5
+*.npy
+*.npz
+*.pkl
+*.pickle
+data/
+datasets/
+raw_data/
+
+# Logs
+*.log
+logs/
+
+# Environment / secrets
+.env
+.env.*
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
+*.swp

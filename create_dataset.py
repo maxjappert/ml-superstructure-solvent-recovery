@@ -1,0 +1,196 @@
+import csv
+import math
+import os
+import random
+import sys
+from pydoc import cram
+
+from solvent_recovery import compute, list_solvents, list_salts
+from solvent_recovery.properties import get_solvent_props, get_water_props, get_salt_props, get_solids_props, \
+    get_extractant_props
+from solvent_recovery.units import _alphas
+
+
+def create_dataset(type: str, size: int, seed: int):
+
+    os.makedirs('data', exist_ok=True)
+    with open(os.path.join('data', f'{type}.csv'), 'w') as f:
+        writer = csv.writer(f)
+        writer.writerow(['target_name',
+                         'solvent2_name',
+                         'salt_name',
+                         'target_kgph',
+                         'solvent2_kgph',
+                         'water_kgph',
+                         'salt_kgph',
+                         'solids_kgph',
+                         'target_volume',
+                         'solvent2_volume',
+                         'water_volume',
+                         'salt_volume',
+                         'solids_volume',
+                         'water_alpha',
+                         'temperature_C',
+                         'target_mw',
+                         'target_density',
+                         'target_tb',
+                         'target_hvap',
+                         'target_cp',
+                         'target_logP', # octanol-water partition coefficient
+                         'target_alpha',
+                         'solvent2_mw',
+                         'solvent2_density',
+                         'solvent2_tb',
+                         'solvent2_hvap',
+                         'solvent2_cp',
+                         'solvent2_logP',
+                         'solvent2_alpha',
+                         'solid_removal_idx',
+                         'recovery_idx',
+                         'purification_idx',
+                         'refinement_idx',
+                         'cost_usd_per_kg_recovered',
+                         'cost_usd_per_year',
+                         'target_purity',
+                         'target_recovery'
+                         ])
+
+        solvents = list_solvents()
+        salts = list_salts()
+        rng = random.Random(seed)
+
+        for i in range(0, size):
+            solvent_target_name = rng.choice(solvents)
+            solvent2_name = rng.choice([s for s in solvents if s != solvent_target_name])
+
+            names = {
+                'target': solvent_target_name,
+                'solvent2': rng.choice([s for s in solvents if s != solvent_target_name]),
+                'salt': rng.choice(salts)
+            }
+
+            if list(names.values()).__contains__('water'):
+                i = i - 1
+                continue
+
+            salt_name = rng.choice(salts)
+            temperature_C = rng.randint(15, 60)
+
+            idxs = {
+                'solids_removal': rng.randint(0, 3),
+                'recovery': rng.randint(0, 3),
+                'purification': rng.randint(0, 3),
+                'refinement': rng.randint(0, 3),
+            }
+
+            props = {
+                "target": get_solvent_props(solvent_target_name),
+                "solvent2": get_solvent_props(solvent2_name),
+                "water": get_water_props(),
+                "salt": get_salt_props(salt_name),
+                "solids": get_solids_props(),
+                "extractant": get_extractant_props(),
+            }
+
+            stream_kgph = {
+                "target": rng.randint(50, 2000),
+                "solvent2": rng.randint(0, 1000),
+                "water": rng.randint(0, 1500) if rng.random() < 0.5 else 0,
+                "salt": rng.randint(0, 200) if rng.random() < 0.5 else 0,
+                "solids": rng.randint(0, 100) if rng.random() < 0.5 else 0
+            }
+
+            n_components = 1
+            if stream_kgph['solvent2'] > 0:
+                n_components += 1
+            if stream_kgph['salt'] > 0:
+                n_components += 1
+            if stream_kgph['water'] > 0:
+                n_components += 1
+            if stream_kgph['solids'] > 0:
+                n_components += 1
+
+            volumetric_flows = {
+                "target": stream_kgph['target'] / props['target'].rho,
+                "solvent2": stream_kgph['solvent2'] / props['solvent2'].rho,
+                "water": stream_kgph['water'] / props['water'].rho,
+                "salt": stream_kgph['salt'] / props['salt'].rho,
+                "solids": stream_kgph['solids'] / props['solids'].rho
+            }
+
+            fractions = {
+                "target": stream_kgph['target'] / sum(stream_kgph.values()),
+                "solvent2": stream_kgph['solvent2'] / sum(stream_kgph.values()),
+                "water": stream_kgph['water'] / sum(stream_kgph.values()),
+                "salt": stream_kgph['salt'] / sum(stream_kgph.values()),
+                "solids": stream_kgph['solids'] / sum(stream_kgph.values()),
+            }
+
+            assert 0.99 < sum(fractions.values()) < 1.01
+
+            r = compute(
+                solvent_target_name=names['target'], solvent2_name=names['solvent2'],
+                salt_name=names['salt'],
+                temperature_C=temperature_C,
+                solvent_target_kgph=stream_kgph['target'],
+                solvent2_kgph=stream_kgph['solvent2'],
+                water_kgph=stream_kgph['water'],
+                salt_kgph=stream_kgph['salt'],
+                solids_kgph=stream_kgph['solids'],
+                idx_solids_removal=idxs['solids_removal'],
+                idx_recovery=idxs['recovery'],
+                idx_purification=idxs['purification'],
+                idx_refinement=idxs['refinement'],
+            )
+
+            alphas = _alphas(stream_kgph, props, temperature_C + 273.15)
+
+            if not alphas.keys().__contains__('solvent2'):
+                alphas['solvent2'] = 0
+
+            writer.writerow([names['target'],
+                             names['solvent2'],
+                             names['salt'],
+                             stream_kgph['target'],
+                             stream_kgph['solvent2'],
+                             stream_kgph['water'],
+                             stream_kgph['salt'],
+                             stream_kgph['solids'],
+                             volumetric_flows['target'],
+                             volumetric_flows['solvent2'],
+                             volumetric_flows['water'],
+                             volumetric_flows['salt'],
+                             volumetric_flows['solids'],
+                             alphas['water'] if stream_kgph['water'] > 0 else 0,
+                             temperature_C,
+                             props['target'].MW,
+                             props['target'].rho,
+                             props['target'].Tb, # in kelvin, we could convert
+                             props['target'].Hvap,
+                             props['target'].Cp,
+                             props['target'].logP,
+                             alphas['target'],
+                             props['solvent2'].MW,
+                             props['solvent2'].rho,
+                             props['solvent2'].Tb, props['solvent2'].Hvap,
+                             props['solvent2'].Cp,
+                             props['solvent2'].logP,
+                             alphas['solvent2'], # the T_ref argument is expected in Kelvin
+                             idxs['solids_removal'],
+                             idxs['recovery'],
+                             idxs['purification'],
+                             idxs['refinement'],
+                             r.cost_usd_per_kg_recovered if not math.isnan(r.cost_usd_per_kg_recovered) else -1, # NaN implies an infeasible solution, in the output we'll encode ths as -1
+                             r.cost_usd_per_year if not math.isnan(r.cost_usd_per_year) else -1,
+                             r.target_purity if not math.isnan(r.target_purity) else -1,
+                             r.target_recovery if not math.isnan(r.target_recovery) else -1])
+
+def main():
+    type = sys.argv[1]
+    size = int(sys.argv[2])
+    seed = int(sys.argv[3])
+
+    create_dataset(type, size, seed)
+
+if __name__ == '__main__':
+    main()
