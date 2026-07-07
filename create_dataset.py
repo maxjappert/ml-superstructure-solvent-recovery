@@ -49,6 +49,7 @@ def create_dataset(type: str, size: int, seed: int):
                          'recovery_idx',
                          'purification_idx',
                          'refinement_idx',
+                         'feasible',
                          'cost_usd_per_kg_recovered',
                          'cost_usd_per_year',
                          'target_purity',
@@ -73,7 +74,6 @@ def create_dataset(type: str, size: int, seed: int):
                 i = i - 1
                 continue
 
-            salt_name = rng.choice(salts)
             temperature_C = rng.randint(15, 60)
 
             idxs = {
@@ -84,10 +84,10 @@ def create_dataset(type: str, size: int, seed: int):
             }
 
             props = {
-                "target": get_solvent_props(solvent_target_name),
-                "solvent2": get_solvent_props(solvent2_name),
+                "target": get_solvent_props(names['target']),
+                "solvent2": get_solvent_props(names['solvent2']),
                 "water": get_water_props(),
-                "salt": get_salt_props(salt_name),
+                "salt": get_salt_props(names['salt']),
                 "solids": get_solids_props(),
                 "extractant": get_extractant_props(),
             }
@@ -143,6 +143,8 @@ def create_dataset(type: str, size: int, seed: int):
                 idx_refinement=idxs['refinement'],
             )
 
+            feasible = not math.isnan(r.cost_usd_per_kg_recovered)
+
             alphas = _alphas(stream_kgph, props, temperature_C + 273.15)
 
             if not alphas.keys().__contains__('solvent2'):
@@ -180,10 +182,11 @@ def create_dataset(type: str, size: int, seed: int):
                              idxs['recovery'],
                              idxs['purification'],
                              idxs['refinement'],
-                             r.cost_usd_per_kg_recovered if not math.isnan(r.cost_usd_per_kg_recovered) else -1, # NaN implies an infeasible solution, in the output we'll encode ths as -1
-                             r.cost_usd_per_year if not math.isnan(r.cost_usd_per_year) else -1,
-                             r.target_purity if not math.isnan(r.target_purity) else -1,
-                             r.target_recovery if not math.isnan(r.target_recovery) else -1])
+                             int(feasible),
+                             r.cost_usd_per_kg_recovered if feasible else 0, # NaN implies an infeasible solution, in the output we'll encode ths as -1
+                             r.cost_usd_per_year if feasible else 0,
+                             r.target_purity if feasible else 0,
+                             r.target_recovery if feasible else 0])
 
 def main():
     type = sys.argv[1]

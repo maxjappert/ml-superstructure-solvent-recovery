@@ -38,10 +38,13 @@ class Dataset(torch.utils.data.Dataset):
                          'refinement_idx',]]
         #]
 
-        output_df = df[['cost_usd_per_kg_recovered',
-                         'cost_usd_per_year',
-                         'target_purity',
-                         'target_recovery']]
+
+        output_df = df[['feasible']]
+
+        #output_df = df[['cost_usd_per_kg_recovered',
+        #                 'cost_usd_per_year',
+        #                 'target_purity',
+        #                 'target_recovery']]
 
         self.X = torch.tensor(input_df.values, dtype=torch.float32)
         self.y = torch.tensor(output_df.values, dtype=torch.float32)
@@ -53,7 +56,7 @@ class Dataset(torch.utils.data.Dataset):
 
         if self.normalise:
             self.X = self.standardiser_X.transform(self.X)
-            self.y = self.standardiser_y.transform(self.y)
+            # self.y = self.standardiser_y.transform(self.y)
 
     def __len__(self):
         return len(self.X)

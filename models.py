@@ -1,25 +1,33 @@
 import torch
 from torch import nn
 
+from config import DEVICE
+
 
 class Model(nn.Module):
     def __init__(self):
         super().__init__()
         self.net = nn.Sequential(nn.Linear(30, 128),
                                  nn.ReLU(),
-                                 # nn.Dropout(0.5),
+                                 nn.Dropout(0.5),
                                  nn.Linear(128, 256),
                                  nn.ReLU(),
                                  # nn.Linear(256, 512),
                                  # nn.ReLU(),
                                  # nn.Linear(512, 256),
                                  # nn.ReLU(),
-                                 # nn.Dropout(0.5),
+                                 nn.Dropout(0.5),
                                  nn.Linear(256, 128),
                                  nn.ReLU(),
-                                 # nn.Dropout(0.5),
-                                 nn.Linear(128, 4))
+                                 nn.Dropout(0.5),
+                                 nn.Linear(128, 1))
 
     def forward(self, x):
         output = self.net(x)
         return output
+
+def load_model(name):
+    model = Model()
+    model.load_state_dict(torch.load(name)['model_state_dict'])
+    model.to(DEVICE)
+    return model

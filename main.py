@@ -12,9 +12,9 @@ from train import train_epoch
 from utils import plot_training
 
 torch.manual_seed(SEED)
-train_set = Dataset('train_large')
-val_set = Dataset('val_large')
-test_set = Dataset('test_large')
+train_set = Dataset('train', normalise=True)
+val_set = Dataset('val', normalise=True)
+test_set = Dataset('test', normalise=True)
 train_loader = DataLoader(train_set, BATCH_SIZE, shuffle=True)
 val_loader = DataLoader(val_set, BATCH_SIZE)
 test_loader = DataLoader(test_set, BATCH_SIZE)
