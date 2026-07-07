@@ -80,7 +80,7 @@ def create_dataset(type: str, size: int, seed: int):
                 'solids_removal': rng.randint(0, 3),
                 'recovery': rng.randint(0, 3),
                 'purification': rng.randint(0, 3),
-                'refinement': rng.randint(0, 3),
+                'refinement': rng.randint(0, 4),
             }
 
             props = {

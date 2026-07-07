@@ -24,10 +24,9 @@ def evaluate(model, loader):
         total_loss += F.binary_cross_entropy_with_logits(logits, y).item() * len(x)
     return total_loss / len(loader.dataset)
 
-def manual_eval(model_name,
-                solvent_target_name,
-                solvent2_name,
-                salt_name,
+def manual_eval(model,
+                props,
+                dataset,
                 solvent_target_flow,
                 solvent2_flow,
                 water_flow,
@@ -39,20 +38,6 @@ def manual_eval(model_name,
                 refinement_idxs,
                 temperature_C=25,
                 ground_truth=True):
-    names = {
-        'target': solvent_target_name,
-        'solvent2': solvent2_name,
-        'salt': salt_name
-    }
-
-    props = {
-        "target": get_solvent_props(solvent_target_name),
-        "solvent2": get_solvent_props(solvent2_name),
-        "water": get_water_props(),
-        "salt": get_salt_props(salt_name),
-        "solids": get_solids_props(),
-        "extractant": get_extractant_props(),
-    }
 
     stream_kgph = {
         "target": solvent_target_flow,
@@ -80,32 +65,18 @@ def manual_eval(model_name,
         "solids": stream_kgph['solids'] / props['solids'].rho
     }
 
-    fractions = {
-        "target": stream_kgph['target'] / sum(stream_kgph.values()),
-        "solvent2": stream_kgph['solvent2'] / sum(stream_kgph.values()),
-        "water": stream_kgph['water'] / sum(stream_kgph.values()),
-        "salt": stream_kgph['salt'] / sum(stream_kgph.values()),
-        "solids": stream_kgph['solids'] / sum(stream_kgph.values()),
-    }
-
-    assert 0.99 < sum(fractions.values()) < 1.01
-
     alphas = _alphas(stream_kgph, props, temperature_C + 273.15)
 
     if not alphas.keys().__contains__('solvent2'):
         alphas['solvent2'] = 0
 
-    model = Model()
-    model.load_state_dict(torch.load(model_name)['model_state_dict'])
-    model.eval()
-
-    dataset = Dataset('train')
+    # dataset = Dataset('train')
 
     # model_outputs = torch.zeros((len(solid_removal_idxs), len(recovery_idxs), len(purification_idxs), len(refinement_idxs)))
     # ground_truths = torch.zeros((len(solid_removal_idxs), len(recovery_idxs), len(purification_idxs), len(refinement_idxs)))
 
-    model_outputs = torch.zeros((4, 4, 4, 4))
-    ground_truths = torch.zeros((4, 4, 4, 4))
+    model_outputs = torch.zeros((4, 4, 4, 5))
+    ground_truths = torch.zeros((4, 4, 4, 5))
 
     for solid_removal_idx in solid_removal_idxs:
         for recovery_idx in recovery_idxs:
@@ -113,8 +84,9 @@ def manual_eval(model_name,
                 for refinement_idx in refinement_idxs:
                     if ground_truth:
                         r = compute(
-                            solvent_target_name=names['target'], solvent2_name=names['solvent2'],
-                            salt_name=names['salt'],
+                            solvent_target_name=props['target'].name,
+                            solvent2_name=props['solvent2'].name,
+                            salt_name=props['salt'].name,
                             temperature_C=temperature_C,
                             solvent_target_kgph=stream_kgph['target'],
                             solvent2_kgph=stream_kgph['solvent2'],
