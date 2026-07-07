@@ -20,7 +20,7 @@ from solvent_recovery.properties import get_solvent_props, get_water_props, get_
 
 # ---- 1. Load your pretrained model once, at startup ----
 
-model_name = 'best_06-07-26_feasibility2.pt'
+model_name = 'fractions_20260707_145344.pt'
 solvent_target_name = 'dmso'
 solvent2_name = 'ethyl acetate'
 salt_name = 'magnesium sulfate'
@@ -28,11 +28,58 @@ solvent_target_flow = 1000
 solvent2_flow = 300
 water_flow = 100
 
-model = Model()
+output = 'fractions'
+
+model = Model(output)
 model.load_state_dict(torch.load(model_name)['model_state_dict'])
 model.eval()
 
-dataset = Dataset('train')
+dataset = Dataset('train', output)
+
+def make_plots(matrix1, matrix2):
+    xs, ys, zs = np.meshgrid(
+        np.arange(matrix1.shape[0]),
+        np.arange(matrix1.shape[1]),
+        np.arange(matrix1.shape[2]),
+        indexing="ij",
+    )
+
+    fig1, ax1 = plt.subplots(subplot_kw={"projection": "3d"})
+    if model.output == 'feasibility' or model.output == 'fractions':
+        sc = ax1.scatter(xs, ys, zs, c=matrix1.flatten(), cmap="viridis", s=100, vmin=0, vmax=1)
+    fig1.colorbar(sc)
+    ax1.set_xlabel("Recovery")
+    ax1.set_xticks(np.arange(4))
+    ax1.set_xticklabels(['Bypass', 'Distillation', 'Pervaporation', 'ATPE'])
+    ax1.set_ylabel("Purification")
+    ax1.set_yticks(np.arange(4))
+    ax1.set_yticklabels(['Bypass', 'Distillation', 'Pervaporation', 'Ultrafiltration'])
+    ax1.set_zlabel("Refinement")
+    ax1.set_zticks(np.arange(5))
+    ax1.set_zticklabels(['Bypass', 'Distillation', 'Pervaporation', 'Ultrafiltration', 'Nanofiltration'])
+
+    fig2, ax2 = plt.subplots(subplot_kw={"projection": "3d"})
+    xs, ys, zs = np.meshgrid(
+        np.arange(matrix2.shape[0]),
+        np.arange(matrix2.shape[1]),
+        np.arange(matrix2.shape[2]),
+        indexing="ij",
+    )
+
+    if model.output == 'feasibility' or model.output == 'fractions':
+        sc = ax2.scatter(xs, ys, zs, c=matrix2.flatten(), cmap="viridis", s=100, vmin=0, vmax=1)
+    fig2.colorbar(sc)
+    ax2.set_xlabel("Recovery")
+    ax2.set_xticks(np.arange(4))
+    ax2.set_xticklabels(['Bypass', 'Distillation', 'Pervaporation', 'ATPE'])
+    ax2.set_ylabel("Purification")
+    ax2.set_yticks(np.arange(4))
+    ax2.set_yticklabels(['Bypass', 'Distillation', 'Pervaporation', 'Ultrafiltration'])
+    ax2.set_zlabel("Refinement")
+    ax2.set_zticks(np.arange(5))
+    ax2.set_zticklabels(['Bypass', 'Distillation', 'Pervaporation', 'Ultrafiltration', 'Nanofiltration'])
+
+    return fig1, fig2
 
 # ---- 2. Inference function ----
 def predict(*fader_values):
@@ -59,41 +106,20 @@ def predict(*fader_values):
                     refinement_idxs=[0, 1, 2, 3, 4],
                     ground_truth=True)
 
-    output_matrix = x['true'][round(fader_values[0]), :, :, :]
-
-    xs, ys, zs = np.meshgrid(
-        np.arange(output_matrix.shape[0]),
-        np.arange(output_matrix.shape[1]),
-        np.arange(output_matrix.shape[2]),
-        indexing="ij",
-    )
-
-    fig = plt.figure()
-    ax = fig.add_subplot(projection="3d")
-    sc = ax.scatter(xs, ys, zs, c=output_matrix.flatten(), cmap="viridis", s=100)
-    fig.colorbar(sc)
-    ax.set_xlabel("Recovery")
-    ax.set_xticks(np.arange(4))
-    ax.set_xticklabels(['Bypass', 'Distillation', 'Pervaporation', 'ATPE'])
-    ax.set_ylabel("Purification")
-    ax.set_yticks(np.arange(4))
-    ax.set_yticklabels(['Bypass', 'Distillation', 'Pervaporation', 'Ultrafiltration'])
-    ax.set_zlabel("Refinement")
-    ax.set_zticks(np.arange(5))
-    ax.set_zticklabels(['Bypass', 'Distillation', 'Pervaporation', 'Ultrafiltration', 'Nanofiltration'])
-    plt.show()
-
-    # fig, ax = plt.subplots(figsize=(4, 4))
-    # im = ax.imshow(output_matrix, cmap="viridis")
-    # fig.colorbar(im, ax=ax)
-    # ax.set_title("Model output")
-    # plt.tight_layout()
-    return fig
+    if model.output == 'feasibility':
+        return make_plots(x['predicted'][round(fader_values[0]), :, :, :], x['true'][round(fader_values[0]), :, :, :])
+    elif model.output == 'fractions':
+        predicted = x['predicted'][round(fader_values[0]), :, :, :, 0]
+        true = x['true'][round(fader_values[0]), :, :, :, 0]
+        return make_plots(predicted, true)
+    else:
+        print('faulty output type specified')
+        exit(-1)
 
 
 # ---- 3. Build the fader grid UI ----
 with gr.Blocks() as demo:
-    gr.Markdown(f"## Flow chart for extracting {solvent_target_name} from a mixture with {solvent2_name} and {salt_name}")
+    gr.Markdown(f"## {output} prediction for extracting {solvent_target_name} from a mixture with {solvent2_name} and {salt_name}")
 
     sliders = []
 
@@ -130,14 +156,18 @@ with gr.Blocks() as demo:
                           label='water flow kg/h')
             sliders.append(s)
 
-    output_plot = gr.Plot(label="Output")
+    # output_plot = gr.Plot(label="Output")
+
+    with gr.Row():
+        plot1 = gr.Plot(label="Predicted target purity")
+        plot2 = gr.Plot(label="True target purity")
 
     # Fire prediction on every slider move (live), not just on release
     for s in sliders:
-        s.change(fn=predict, inputs=sliders, outputs=output_plot)
+        s.change(fn=predict, inputs=sliders, outputs=[plot1, plot2], show_progress='hidden')
 
     # Initial render
-    demo.load(fn=predict, inputs=sliders, outputs=output_plot)
+    demo.load(fn=predict, inputs=sliders, outputs=[plot1, plot2])
 
 if __name__ == "__main__":
     demo.launch()

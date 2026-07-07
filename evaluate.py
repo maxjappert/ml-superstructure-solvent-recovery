@@ -14,16 +14,23 @@ from solvent_recovery.units import _alphas
 
 
 @torch.no_grad()
-def evaluate(model, loader):
+def evaluate(model, loader, output: str):
     model.eval()
     total_loss, correct = 0.0, 0
     for x, y in loader:
         x, y = x.to(DEVICE), y.to(DEVICE)
-        logits = model(x)
-        # total_loss += F.mse_loss(logits, y).item() * len(x)
-        total_loss += F.binary_cross_entropy_with_logits(logits, y).item() * len(x)
+        y_hat = model(x)
+        if output == 'feasibility':
+            loss = F.binary_cross_entropy_with_logits(y_hat, y)
+        elif output == 'fractions' or output == 'cost':
+            loss = F.mse_loss(y_hat, y)
+        else:
+            print('wrong output type')
+            exit(-1)
+        total_loss += loss.item() * len(x)
     return total_loss / len(loader.dataset)
 
+@torch.no_grad()
 def manual_eval(model,
                 props,
                 dataset,
@@ -75,14 +82,25 @@ def manual_eval(model,
     # model_outputs = torch.zeros((len(solid_removal_idxs), len(recovery_idxs), len(purification_idxs), len(refinement_idxs)))
     # ground_truths = torch.zeros((len(solid_removal_idxs), len(recovery_idxs), len(purification_idxs), len(refinement_idxs)))
 
-    model_outputs = torch.zeros((4, 4, 4, 5))
-    ground_truths = torch.zeros((4, 4, 4, 5))
+    if model.output == 'feasibility':
+        model_outputs = torch.zeros((4, 4, 4, 5))
+        ground_truths = torch.zeros((4, 4, 4, 5))
+    elif model.output == 'fractions' or model.output == 'cost':
+        model_outputs = torch.zeros((4, 4, 4, 5, 2))
+        ground_truths = torch.zeros((4, 4, 4, 5, 2))
+    else:
+        print('wrong output type')
+        exit(-1)
 
     for solid_removal_idx in solid_removal_idxs:
         for recovery_idx in recovery_idxs:
             for purification_idx in purification_idxs:
                 for refinement_idx in refinement_idxs:
                     if ground_truth:
+
+                        if recovery_idx == 3:
+                            ...
+
                         r = compute(
                             solvent_target_name=props['target'].name,
                             solvent2_name=props['solvent2'].name,
@@ -99,7 +117,14 @@ def manual_eval(model,
                             idx_refinement=refinement_idx,
                         )
 
-                        ground_truths[solid_removal_idx,recovery_idx,purification_idx,refinement_idx] = not math.isnan(r.cost_usd_per_kg_recovered)
+                        if model.output == 'feasibility':
+                            ground_truths[solid_removal_idx,recovery_idx,purification_idx,refinement_idx] = not math.isnan(r.cost_usd_per_kg_recovered)
+                        elif model.output == 'fractions':
+                            ground_truths[solid_removal_idx, recovery_idx, purification_idx, refinement_idx, 0] = r.target_purity
+                            ground_truths[solid_removal_idx, recovery_idx, purification_idx, refinement_idx, 1] = r.target_recovery
+                        else:
+                            print('wrong output type')
+                            exit(-1)
 
                     tensor_input = torch.tensor([stream_kgph['target'],
                                              stream_kgph['solvent2'],
@@ -134,18 +159,27 @@ def manual_eval(model,
                     tensor_input = dataset.standardiser_X.transform(tensor_input)
 
                     model_output = model(tensor_input)
-                    model_output = torch.sigmoid(model_output).item()
-                    model_output = model_output > 0.5
-                    model_outputs[solid_removal_idx,recovery_idx,purification_idx,refinement_idx] = model_output
+
+                    if model.output == 'feasibility':
+                        model_output = torch.sigmoid(model_output)
+
+                        model_output = model_output > 0.5
+
+                        model_outputs[solid_removal_idx,recovery_idx,purification_idx,refinement_idx] = model_output
+                    if model.output == 'fractions':
+                        model_outputs[solid_removal_idx,recovery_idx,purification_idx,refinement_idx] = model_output.squeeze()[0].item() # todo just temporary, there's another fraction to be extracted
+
 
     if ground_truth:
         return {
             'predicted': model_outputs,
             'true': ground_truths,
+            'output': model.output
         }
     else:
         return {
-            'predicted': model_outputs
+            'predicted': model_outputs,
+            'output': model.output
         }
 
 def main():

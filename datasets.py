@@ -4,7 +4,7 @@ from fontTools.designspaceLib.statNames import StatNames
 
 
 class Dataset(torch.utils.data.Dataset):
-    def __init__(self, type: str, normalise=True):
+    def __init__(self, type: str, output, normalise=True):
         df = pd.read_csv(f'data/{type}.csv')
         input_df = df[['target_kgph',
                          'solvent2_kgph',
@@ -38,13 +38,17 @@ class Dataset(torch.utils.data.Dataset):
                          'refinement_idx',]]
         #]
 
-
-        output_df = df[['feasible']]
-
-        #output_df = df[['cost_usd_per_kg_recovered',
-        #                 'cost_usd_per_year',
-        #                 'target_purity',
-        #                 'target_recovery']]
+        if output == 'feasibility':
+            output_df = df[['feasible']]
+        elif output == 'fractions':
+            output_df = df[[ 'target_purity',
+                             'target_recovery']]
+        elif output == 'cost':
+            output_df = df[['cost_usd_per_kg_recovered',
+                             'cost_usd_per_year']]
+        else:
+            print('wrong output form')
+            exit(0)
 
         self.X = torch.tensor(input_df.values, dtype=torch.float32)
         self.y = torch.tensor(output_df.values, dtype=torch.float32)
@@ -56,7 +60,8 @@ class Dataset(torch.utils.data.Dataset):
 
         if self.normalise:
             self.X = self.standardiser_X.transform(self.X)
-            # self.y = self.standardiser_y.transform(self.y)
+            if output == 'cost':
+                self.y = self.standardiser_y.transform(self.y)
 
     def __len__(self):
         return len(self.X)
