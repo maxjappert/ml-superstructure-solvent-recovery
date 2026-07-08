@@ -13,14 +13,16 @@ from utils import plot_training
 
 torch.manual_seed(SEED)
 output = 'fractions'
-train_set = Dataset('train', output,  normalise=True)
-val_set = Dataset('val', output, normalise=True)
-test_set = Dataset('test', output, normalise=True)
+train_set = Dataset('train_small', output,  normalise=True)
+val_set = Dataset('val_small', output, normalise=True)
+test_set = Dataset('test_small', output, normalise=True)
 train_loader = DataLoader(train_set, BATCH_SIZE, shuffle=True)
 val_loader = DataLoader(val_set, BATCH_SIZE)
 test_loader = DataLoader(test_set, BATCH_SIZE)
 
 model = Model(output).to(DEVICE)
+# todo loads model for further training
+# model.load_state_dict(torch.load('fractions_20260708_091906.pt')['model_state_dict'])
 optimizer = torch.optim.AdamW(model.parameters(), lr=LR, weight_decay=5e-4)
 
 checkpoint_filename = f"{output}_{datetime.datetime.now().strftime("%Y%m%d_%H%M%S")}.pt"

@@ -77,11 +77,6 @@ def manual_eval(model,
     if not alphas.keys().__contains__('solvent2'):
         alphas['solvent2'] = 0
 
-    # dataset = Dataset('train')
-
-    # model_outputs = torch.zeros((len(solid_removal_idxs), len(recovery_idxs), len(purification_idxs), len(refinement_idxs)))
-    # ground_truths = torch.zeros((len(solid_removal_idxs), len(recovery_idxs), len(purification_idxs), len(refinement_idxs)))
-
     if model.output == 'feasibility':
         model_outputs = torch.zeros((4, 4, 4, 5))
         ground_truths = torch.zeros((4, 4, 4, 5))
@@ -97,10 +92,6 @@ def manual_eval(model,
             for purification_idx in purification_idxs:
                 for refinement_idx in refinement_idxs:
                     if ground_truth:
-
-                        if recovery_idx == 3:
-                            ...
-
                         r = compute(
                             solvent_target_name=props['target'].name,
                             solvent2_name=props['solvent2'].name,

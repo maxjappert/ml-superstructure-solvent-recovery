@@ -20,10 +20,11 @@ from solvent_recovery.properties import get_solvent_props, get_water_props, get_
 
 # ---- 1. Load your pretrained model once, at startup ----
 
-model_name = 'fractions_20260707_145344.pt'
-solvent_target_name = 'dmso'
-solvent2_name = 'ethyl acetate'
-salt_name = 'magnesium sulfate'
+model_name = 'fractions_20260707_155708.pt'
+solvent_target_name = 'nmp'
+solvent2_name = 'ethanol'
+salt_name = 'sodium chloride'
+output = 'fractions'
 solvent_target_flow = 1000
 solvent2_flow = 300
 water_flow = 100
@@ -109,8 +110,8 @@ def predict(*fader_values):
     if model.output == 'feasibility':
         return make_plots(x['predicted'][round(fader_values[0]), :, :, :], x['true'][round(fader_values[0]), :, :, :])
     elif model.output == 'fractions':
-        predicted = x['predicted'][round(fader_values[0]), :, :, :, 0]
-        true = x['true'][round(fader_values[0]), :, :, :, 0]
+        predicted = x['predicted'][round(fader_values[0]), :, :, :, 1]
+        true = x['true'][round(fader_values[0]), :, :, :, 1]
         return make_plots(predicted, true)
     else:
         print('faulty output type specified')
@@ -131,27 +132,27 @@ with gr.Blocks() as demo:
                           label='solid_removal_idx')
             sliders.append(s)
             s = gr.Slider(minimum=1,
-                          maximum=10000,
+                          maximum=2000,
                           step=1,
                           label='solvent target flow kg/h')
             sliders.append(s)
             s = gr.Slider(minimum=0,
-                          maximum=10000,
+                          maximum=1000,
                           step=1,
                           label='solvent 2 flow kg/h')
             sliders.append(s)
             s = gr.Slider(minimum=0,
-                          maximum=10000,
+                          maximum=200,
                           step=1,
                           label='salt flow kg/h')
             sliders.append(s)
             s = gr.Slider(minimum=0,
-                          maximum=10000,
+                          maximum=100,
                           step=1,
                           label='solids flow kg/h')
             sliders.append(s)
             s = gr.Slider(minimum=0,
-                          maximum=10000,
+                          maximum=1500,
                           step=1,
                           label='water flow kg/h')
             sliders.append(s)
