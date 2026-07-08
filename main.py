@@ -50,8 +50,8 @@ for epoch in range(EPOCHS):
     train_losses.append(train_loss)
     val_losses.append(val_loss)
 
-    if epoch % 20 == 0 and epoch > 0:
-       plot_training(train_losses, val_losses)
+    # if epoch % 20 == 0 and epoch > 0:
+    #    plot_training(train_losses, val_losses)
 
 checkpoint = torch.load(checkpoint_filename)
 model.load_state_dict(checkpoint['model_state_dict'])
