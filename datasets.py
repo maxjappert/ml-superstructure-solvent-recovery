@@ -11,12 +11,6 @@ class Dataset(torch.utils.data.Dataset):
                          'water_kgph',
                          'salt_kgph',
                          'solids_kgph',
-                         'target_volume',
-                         'solvent2_volume',
-                         'water_volume',
-                         'salt_volume',
-                         'solids_volume',  # todo: can be derived from mass and density, thus superfluous
-                         'water_alpha', # todo: compute clean pairwise volatilities
                          'temperature_C',
                          'target_mw',
                          'target_density',
@@ -24,7 +18,8 @@ class Dataset(torch.utils.data.Dataset):
                          'target_hvap',
                          'target_cp',
                          'target_logP', # octanol-water partition coefficient
-                         'target_alpha',
+                         'target_log_alpha_solvent2',
+                         'target_log_alpha_water',
                          'solvent2_mw',
                          'solvent2_density',
                          'solvent2_tb',

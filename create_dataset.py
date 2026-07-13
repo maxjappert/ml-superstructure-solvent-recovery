@@ -8,7 +8,7 @@ from pydoc import cram
 from solvent_recovery import compute, list_solvents, list_salts
 from solvent_recovery.properties import get_solvent_props, get_water_props, get_salt_props, get_solids_props, \
     get_extractant_props
-from solvent_recovery.units import _alphas
+from solvent_recovery.units import _alphas, _log_alphas_pairwise
 
 
 def create_dataset(type: str, size: int, seed: int):
@@ -29,7 +29,6 @@ def create_dataset(type: str, size: int, seed: int):
                          'water_volume',
                          'salt_volume',
                          'solids_volume',
-                         'water_alpha',
                          'temperature_C',
                          'target_mw',
                          'target_density',
@@ -37,14 +36,14 @@ def create_dataset(type: str, size: int, seed: int):
                          'target_hvap',
                          'target_cp',
                          'target_logP', # octanol-water partition coefficient
-                         'target_alpha',
+                         'target_log_alpha_solvent2',
+                         'target_log_alpha_water',
                          'solvent2_mw',
                          'solvent2_density',
                          'solvent2_tb',
                          'solvent2_hvap',
                          'solvent2_cp',
                          'solvent2_logP',
-                         'solvent2_alpha',
                          'solid_removal_idx',
                          'recovery_idx',
                          'purification_idx',
@@ -62,17 +61,12 @@ def create_dataset(type: str, size: int, seed: int):
 
         for i in range(0, size):
             solvent_target_name = rng.choice(solvents)
-            solvent2_name = rng.choice([s for s in solvents if s != solvent_target_name])
 
             names = {
                 'target': solvent_target_name,
                 'solvent2': rng.choice([s for s in solvents if s != solvent_target_name]),
                 'salt': rng.choice(salts)
             }
-
-            if list(names.values()).__contains__('water'):
-                i = i - 1
-                continue
 
             temperature_C = rng.randint(15, 60)
 
@@ -95,9 +89,9 @@ def create_dataset(type: str, size: int, seed: int):
             stream_kgph = {
                 "target": rng.randint(50, 2000),
                 "solvent2": rng.randint(0, 1000),
-                "water": rng.randint(0, 1500) if rng.random() < 0.5 else 0,
-                "salt": rng.randint(0, 200) if rng.random() < 0.5 else 0,
-                "solids": rng.randint(0, 100) if rng.random() < 0.5 else 0
+                "water": rng.randint(0, 1500) if rng.random() < 0.8 else 0,
+                "salt": rng.randint(0, 200) if rng.random() < 0.8 else 0,
+                "solids": rng.randint(0, 100) if rng.random() < 0.8 else 0
             }
 
             n_components = 1
@@ -145,10 +139,7 @@ def create_dataset(type: str, size: int, seed: int):
 
             feasible = not math.isnan(r.cost_usd_per_kg_recovered)
 
-            alphas = _alphas(stream_kgph, props, temperature_C + 273.15)
-
-            if not alphas.keys().__contains__('solvent2'):
-                alphas['solvent2'] = 0
+            log_alphas = _log_alphas_pairwise(stream_kgph, props, temperature_C + 273.15)
 
             writer.writerow([names['target'],
                              names['solvent2'],
@@ -163,7 +154,6 @@ def create_dataset(type: str, size: int, seed: int):
                              volumetric_flows['water'],
                              volumetric_flows['salt'],
                              volumetric_flows['solids'],
-                             alphas['water'] if stream_kgph['water'] > 0 else 0,
                              temperature_C,
                              props['target'].MW,
                              props['target'].rho,
@@ -171,13 +161,14 @@ def create_dataset(type: str, size: int, seed: int):
                              props['target'].Hvap,
                              props['target'].Cp,
                              props['target'].logP,
-                             alphas['target'],
+                             log_alphas['target']['solvent2'],
+                             log_alphas['target']['water'],
                              props['solvent2'].MW,
                              props['solvent2'].rho,
-                             props['solvent2'].Tb, props['solvent2'].Hvap,
+                             props['solvent2'].Tb,
+                             props['solvent2'].Hvap,
                              props['solvent2'].Cp,
                              props['solvent2'].logP,
-                             alphas['solvent2'], # the T_ref argument is expected in Kelvin
                              idxs['solids_removal'],
                              idxs['recovery'],
                              idxs['purification'],
@@ -192,11 +183,12 @@ def create_dataset(type: str, size: int, seed: int):
                 print(f'{i}/{size}')
 
 def main():
-    type = sys.argv[1]
-    size = int(sys.argv[2])
-    seed = int(sys.argv[3])
+#    type = sys.argv[1]
+#    size = int(sys.argv[2])
+#    seed = int(sys.argv[3])
 
-    create_dataset(type, size, seed)
+#    create_dataset(type, size, seed)
+    create_dataset('test',10, 3)
 
 if __name__ == '__main__':
     main()

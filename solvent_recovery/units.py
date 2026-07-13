@@ -62,6 +62,9 @@ def total_mass(stream: Stream) -> float:
 def _liquid_keys(stream: Stream, props: Props):
     return [k for k, m in stream.items() if m > TINY and props[k].volatile]
 
+def _liquid_keys_guarantee(stream: Stream, props: Props):
+    return [k for k, m in stream.items() if props[k].volatile]
+
 
 def _empty_like(stream: Stream) -> Stream:
     return {k: 0.0 for k in stream}
@@ -153,7 +156,22 @@ def _alphas(stream: Stream, props: Props, T_ref: float) -> Dict[str, float]:
     vols = _liquid_keys(stream, props)
     ps = {k: props[k].Psat(T_ref) for k in vols}
     pmin = min(ps.values())
+    print(vols)
+    print(ps)
     return {k: ps[k] / max(pmin, 1e-9) for k in vols}
+
+def _log_alphas_pairwise(stream: Stream, props: Props, T_ref: float) -> Dict[str, Dict[str, float]]:
+    vols = _liquid_keys_guarantee(stream, props)
+    ps = {k: props[k].Psat(T_ref) for k in vols}
+    l = len(ps)
+    log_alphas = dict.fromkeys(vols, dict())
+
+    for vol_i in vols:
+        log_alphas[vol_i] = {}
+        for vol_j in vols:
+            log_alphas[vol_i][vol_j] = math.log(ps[vol_i] / ps[vol_j])
+
+    return log_alphas
 
 
 def distillation(stream: Stream, props: Props, stage: str, T_feed: float):

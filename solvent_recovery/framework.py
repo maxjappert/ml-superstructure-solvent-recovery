@@ -14,8 +14,7 @@ Stage index maps:
 """
 from __future__ import annotations
 
-import math
-from typing import NamedTuple, Optional
+from typing import NamedTuple
 
 from . import units as U
 from .costing import annualized_cost
