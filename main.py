@@ -13,7 +13,7 @@ from utils import plot_training
 
 torch.manual_seed(SEED)
 output = 'fractions'
-train_set = Dataset('train', output,  normalise=True)
+train_set = Dataset('train_large', output,  normalise=True)
 val_set = Dataset('val', output, normalise=True)
 test_set = Dataset('test', output, normalise=True)
 train_loader = DataLoader(train_set, BATCH_SIZE, shuffle=True)
@@ -49,9 +49,6 @@ for epoch in range(EPOCHS):
 
     train_losses.append(train_loss)
     val_losses.append(val_loss)
-
-    # if epoch % 20 == 0 and epoch > 0:
-    #    plot_training(train_losses, val_losses)
 
 checkpoint = torch.load(checkpoint_filename)
 model.load_state_dict(checkpoint['model_state_dict'])

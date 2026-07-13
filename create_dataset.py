@@ -188,6 +188,9 @@ def create_dataset(type: str, size: int, seed: int):
                              r.target_purity if feasible else 0,
                              r.target_recovery if feasible else 0])
 
+            if i % 500000 == 0:
+                print(f'{i}/{size}')
+
 def main():
     type = sys.argv[1]
     size = int(sys.argv[2])

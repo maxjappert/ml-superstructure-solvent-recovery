@@ -15,8 +15,8 @@ class Dataset(torch.utils.data.Dataset):
                          'solvent2_volume',
                          'water_volume',
                          'salt_volume',
-                         'solids_volume',
-                         'water_alpha',
+                         'solids_volume',  # todo: can be derived from mass and density, thus superfluous
+                         'water_alpha', # todo: compute clean pairwise volatilities
                          'temperature_C',
                          'target_mw',
                          'target_density',
