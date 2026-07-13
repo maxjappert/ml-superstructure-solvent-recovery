@@ -8,7 +8,7 @@ class Model(nn.Module):
     def __init__(self):
         super().__init__()
 
-        self.net = nn.Sequential(nn.Linear(24, 128),
+        self.net_shared = nn.Sequential(nn.Linear(24, 128),
                                  nn.ReLU(),
                                  nn.Dropout(0.5),
                                  nn.Linear(128, 256),
@@ -17,7 +17,7 @@ class Model(nn.Module):
                                  nn.Linear(256, 256),
                                  nn.ReLU(),
                                  nn.Dropout(0.5),
-                                 nn.Linear(256, 128),
+                                 nn.Linear(256, 256),
                                  nn.ReLU(),
                                  nn.Dropout(0.5),
                                  nn.Linear(128, 1))
