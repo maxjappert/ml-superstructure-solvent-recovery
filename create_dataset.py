@@ -56,11 +56,13 @@ def create_dataset(type: str, size: int, seed: int):
                          ])
 
         solvents = list_solvents()
+        num_solvents = len(solvents)
         salts = list_salts()
         rng = random.Random(seed)
 
         for i in range(0, size):
-            solvent_target_name = rng.choice(solvents)
+            # latin hypercube sampling
+            solvent_target_name = solvents[i % num_solvents]
 
             names = {
                 'target': solvent_target_name,
@@ -183,12 +185,11 @@ def create_dataset(type: str, size: int, seed: int):
                 print(f'{i}/{size}')
 
 def main():
-#    type = sys.argv[1]
-#    size = int(sys.argv[2])
-#    seed = int(sys.argv[3])
+    type = sys.argv[1]
+    size = int(sys.argv[2])
+    seed = int(sys.argv[3])
 
-#    create_dataset(type, size, seed)
-    create_dataset('test',10, 3)
+    create_dataset(type, size, seed)
 
 if __name__ == '__main__':
     main()

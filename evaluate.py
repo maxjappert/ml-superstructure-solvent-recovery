@@ -10,23 +10,17 @@ from models import Model
 from solvent_recovery import compute
 from solvent_recovery.properties import get_solvent_props, get_water_props, get_salt_props, get_solids_props, \
     get_extractant_props
-from solvent_recovery.units import _alphas
+from solvent_recovery.units import _alphas, _log_alphas_pairwise
 
 
 @torch.no_grad()
-def evaluate(model, loader, output: str):
+def evaluate(model, loader):
     model.eval()
     total_loss, correct = 0.0, 0
     for x, y in loader:
         x, y = x.to(DEVICE), y.to(DEVICE)
         y_hat = model(x)
-        if output == 'feasibility':
-            loss = F.binary_cross_entropy_with_logits(y_hat, y)
-        elif output == 'fractions' or output == 'cost':
-            loss = F.mse_loss(y_hat, y)
-        else:
-            print('wrong output type')
-            exit(-1)
+        loss = F.binary_cross_entropy_with_logits(y_hat, y)
         total_loss += loss.item() * len(x)
     return total_loss / len(loader.dataset)
 
@@ -43,8 +37,7 @@ def manual_eval(model,
                 recovery_idxs,
                 purification_idxs,
                 refinement_idxs,
-                temperature_C=25,
-                ground_truth=True):
+                temperature_C=25):
 
     stream_kgph = {
         "target": solvent_target_flow,
@@ -72,11 +65,6 @@ def manual_eval(model,
         "solids": stream_kgph['solids'] / props['solids'].rho
     }
 
-    alphas = _alphas(stream_kgph, props, temperature_C + 273.15)
-
-    if not alphas.keys().__contains__('solvent2'):
-        alphas['solvent2'] = 0
-
     if model.output == 'feasibility':
         model_outputs = torch.zeros((4, 4, 4, 5))
         ground_truths = torch.zeros((4, 4, 4, 5))
@@ -91,43 +79,31 @@ def manual_eval(model,
         for recovery_idx in recovery_idxs:
             for purification_idx in purification_idxs:
                 for refinement_idx in refinement_idxs:
-                    if ground_truth:
-                        r = compute(
-                            solvent_target_name=props['target'].name,
-                            solvent2_name=props['solvent2'].name,
-                            salt_name=props['salt'].name,
-                            temperature_C=temperature_C,
-                            solvent_target_kgph=stream_kgph['target'],
-                            solvent2_kgph=stream_kgph['solvent2'],
-                            water_kgph=stream_kgph['water'],
-                            salt_kgph=stream_kgph['salt'],
-                            solids_kgph=stream_kgph['solids'],
-                            idx_solids_removal=solid_removal_idx,
-                            idx_recovery=recovery_idx,
-                            idx_purification=purification_idx,
-                            idx_refinement=refinement_idx,
-                        )
+                    r = compute(
+                        solvent_target_name=props['target'].name,
+                        solvent2_name=props['solvent2'].name,
+                        salt_name=props['salt'].name,
+                        temperature_C=temperature_C,
+                        solvent_target_kgph=stream_kgph['target'],
+                        solvent2_kgph=stream_kgph['solvent2'],
+                        water_kgph=stream_kgph['water'],
+                        salt_kgph=stream_kgph['salt'],
+                        solids_kgph=stream_kgph['solids'],
+                        idx_solids_removal=solid_removal_idx,
+                        idx_recovery=recovery_idx,
+                        idx_purification=purification_idx,
+                        idx_refinement=refinement_idx,
+                    )
 
-                        if model.output == 'feasibility':
-                            ground_truths[solid_removal_idx,recovery_idx,purification_idx,refinement_idx] = not math.isnan(r.cost_usd_per_kg_recovered)
-                        elif model.output == 'fractions':
-                            ground_truths[solid_removal_idx, recovery_idx, purification_idx, refinement_idx, 0] = r.target_purity
-                            ground_truths[solid_removal_idx, recovery_idx, purification_idx, refinement_idx, 1] = r.target_recovery
-                        else:
-                            print('wrong output type')
-                            exit(-1)
+                    ground_truths[solid_removal_idx,recovery_idx,purification_idx,refinement_idx] = not math.isnan(r.cost_usd_per_kg_recovered)
+
+                    log_alphas = _log_alphas_pairwise(stream_kgph, props, temperature_C + 273.15)
 
                     tensor_input = torch.tensor([stream_kgph['target'],
                                              stream_kgph['solvent2'],
                                              stream_kgph['water'],
                                              stream_kgph['salt'],
                                              stream_kgph['solids'],
-                                             volumetric_flows['target'],
-                                             volumetric_flows['solvent2'],
-                                             volumetric_flows['water'],
-                                             volumetric_flows['salt'],
-                                             volumetric_flows['solids'],
-                                             alphas['water'] if stream_kgph['water'] > 0 else 0,
                                              temperature_C,
                                              props['target'].MW,
                                              props['target'].rho,
@@ -135,13 +111,13 @@ def manual_eval(model,
                                              props['target'].Hvap,
                                              props['target'].Cp,
                                              props['target'].logP,
-                                             alphas['target'],
+                                             log_alphas['target']['solvent2'],
+                                             log_alphas['target']['water'],
                                              props['solvent2'].MW,
                                              props['solvent2'].rho,
                                              props['solvent2'].Tb, props['solvent2'].Hvap,
                                              props['solvent2'].Cp,
                                              props['solvent2'].logP,
-                                             alphas['solvent2'], # the T_ref argument is expected in Kelvin
                                              solid_removal_idx,
                                              recovery_idx,
                                              purification_idx,
@@ -151,27 +127,18 @@ def manual_eval(model,
 
                     model_output = model(tensor_input)
 
-                    if model.output == 'feasibility':
-                        model_output = torch.sigmoid(model_output)
+                    model_output = torch.sigmoid(model_output)
 
-                        model_output = model_output > 0.5
+                    model_output = model_output > 0.5
 
-                        model_outputs[solid_removal_idx,recovery_idx,purification_idx,refinement_idx] = model_output
-                    if model.output == 'fractions':
-                        model_outputs[solid_removal_idx,recovery_idx,purification_idx,refinement_idx] = model_output.squeeze()[0].item() # todo just temporary, there's another fraction to be extracted
+                    model_outputs[solid_removal_idx, recovery_idx,purification_idx,refinement_idx] = model_output
 
 
-    if ground_truth:
-        return {
-            'predicted': model_outputs,
-            'true': ground_truths,
-            'output': model.output
-        }
-    else:
-        return {
-            'predicted': model_outputs,
-            'output': model.output
-        }
+    return {
+        'predicted': model_outputs,
+        'true': ground_truths,
+    }
+
 
 def main():
     output = manual_eval('best_06-07-26_feasibility.pt',

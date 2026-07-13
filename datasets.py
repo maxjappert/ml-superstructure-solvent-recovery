@@ -4,8 +4,8 @@ from fontTools.designspaceLib.statNames import StatNames
 
 
 class Dataset(torch.utils.data.Dataset):
-    def __init__(self, type: str, output, normalise=True):
-        df = pd.read_csv(f'data/{type}.csv')
+    def __init__(self, dataset_type):
+        df = pd.read_csv(f'data/{dataset_type}.csv')
         input_df = df[['target_kgph',
                          'solvent2_kgph',
                          'water_kgph',
@@ -26,37 +26,41 @@ class Dataset(torch.utils.data.Dataset):
                          'solvent2_hvap',
                          'solvent2_cp',
                          'solvent2_logP',
-                         'solvent2_alpha',
                          'solid_removal_idx',
                          'recovery_idx',
                          'purification_idx',
                          'refinement_idx',]]
         #]
 
-        if output == 'feasibility':
-            output_df = df[['feasible']]
-        elif output == 'fractions':
-            output_df = df[[ 'target_purity',
-                             'target_recovery']]
-        elif output == 'cost':
-            output_df = df[['cost_usd_per_kg_recovered',
-                             'cost_usd_per_year']]
-        else:
-            print('wrong output form')
-            exit(0)
+        output_df = df[['feasible']]
+
+
+        #if output == 'feasibility':
+        #    output_df = df[['feasible']]
+        #elif output == 'fractions':
+        #    output_df = df[[ 'target_purity',
+        #                     'target_recovery']]
+        #elif output == 'cost':
+        #    output_df = df[['cost_usd_per_kg_recovered',
+        #                     'cost_usd_per_year']]
+        #else:
+        #    print('wrong output form')
+        #    exit(0)
 
         self.X = torch.tensor(input_df.values, dtype=torch.float32)
         self.y = torch.tensor(output_df.values, dtype=torch.float32)
 
         self.standardiser_X = Standardizer(self.X)
-        self.standardiser_y = Standardizer(self.y)
+        #self.standardiser_y = Standardizer(self.y)
 
-        self.normalise = normalise
+        self.X = self.standardiser_X.transform(self.X)
 
-        if self.normalise:
-            self.X = self.standardiser_X.transform(self.X)
-            if output == 'cost':
-                self.y = self.standardiser_y.transform(self.y)
+        #self.normalise = normalise
+
+        #if self.normalise:
+        #    self.X = self.standardiser_X.transform(self.X)
+        #    if output == 'cost':
+        #        self.y = self.standardiser_y.transform(self.y)
 
     def __len__(self):
         return len(self.X)

@@ -5,20 +5,10 @@ from config import DEVICE
 
 
 class Model(nn.Module):
-    def __init__(self, output):
+    def __init__(self):
         super().__init__()
 
-        self.output = output
-
-        if output == 'feasibility':
-            num_outputs = 1
-        elif output == 'fractions' or output == 'cost':
-            num_outputs = 2
-        else:
-            print('illegal output specification')
-            exit(-1)
-
-        self.net = nn.Sequential(nn.Linear(30, 128),
+        self.net = nn.Sequential(nn.Linear(24, 128),
                                  nn.ReLU(),
                                  nn.Dropout(0.5),
                                  nn.Linear(128, 256),
@@ -30,13 +20,10 @@ class Model(nn.Module):
                                  nn.Linear(256, 128),
                                  nn.ReLU(),
                                  nn.Dropout(0.5),
-                                 nn.Linear(128, num_outputs))
+                                 nn.Linear(128, 1))
 
     def forward(self, x):
         y_hat = self.net(x)
-
-        if self.output == 'fractions':
-            y_hat = torch.sigmoid(y_hat)
 
         return y_hat
 
