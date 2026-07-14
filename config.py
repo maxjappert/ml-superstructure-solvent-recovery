@@ -6,3 +6,5 @@ BATCH_SIZE = 256
 LR = 1e-3
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else 'cpu')
 NUM_WORKERS = 0
+
+loss_scalar_fractions = 0.2
