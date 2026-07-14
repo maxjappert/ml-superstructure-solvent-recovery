@@ -29,7 +29,7 @@ class Model(nn.Module):
         self.net_cost = nn.Sequential(nn.Linear(256, 128),
                                              nn.ReLU(),
                                              nn.Dropout(0.5),
-                                             nn.Linear(128, 4),)
+                                             nn.Linear(128, 2),)
 
 
 
@@ -50,8 +50,8 @@ class Model(nn.Module):
             'purity_logvar': y_hat_fractions[:,3],
             'cost_per_kg_mu_z': y_hat_cost[:,0],
             'cost_per_kg_logvar_z': y_hat_cost[:,1],
-            'cost_per_year_mu_z': y_hat_cost[:,2],
-            'cost_per_year_logvar_z': y_hat_cost[:,3]
+            # 'cost_per_year_mu_z': y_hat_cost[:,2],
+            # 'cost_per_year_logvar_z': y_hat_cost[:,3]
         }
 
         return y_hat_combined

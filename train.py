@@ -1,4 +1,4 @@
-from config import DEVICE, loss_scalar_fractions
+from config import DEVICE, loss_scalar_fractions, loss_scalar_cost
 import torch.nn.functional as F
 
 def train_epoch(model, loader, optimizer,):
@@ -7,21 +7,25 @@ def train_epoch(model, loader, optimizer,):
     for x, y in loader:
         x, y = x.to(DEVICE), y.to(DEVICE)
         optimizer.zero_grad()
+        # todo add feasibility masking
         y_hat = model(x)
         loss_feasibility = F.binary_cross_entropy_with_logits(y_hat['feasibility'], y[:,0])
-        loss_recovery = F.gaussian_nll_loss(y_hat['recovery_mu'], y[:,1], y_hat['recovery_logvar'].exp(), reduction='mean')
-        loss_purity = F.gaussian_nll_loss(y_hat['purity_mu'], y[:,2], y_hat['purity_logvar'].exp(), reduction='mean')
-        loss_cost_per_kg = F.gaussian_nll_loss(y_hat['cost_per_kg_mu_z'], y[:,3], y_hat['cost_per_kg_logvar_z'].exp(), reduction='mean')
-        loss_cost_per_year = F.gaussian_nll_loss(y_hat['cost_per_year_mu_z'], y[:,4], y_hat['cost_per_year_logvar_z'].exp(), reduction='mean')
+        loss_recovery = loss_scalar_fractions * F.gaussian_nll_loss(y_hat['recovery_mu'], y[:,1], y_hat['recovery_logvar'].exp(), reduction='mean')
+        loss_purity = loss_scalar_fractions * F.gaussian_nll_loss(y_hat['purity_mu'], y[:,2], y_hat['purity_logvar'].exp(), reduction='mean')
+        loss_cost_per_kg = loss_scalar_cost * F.gaussian_nll_loss(y_hat['cost_per_kg_mu_z'], y[:,3], y_hat['cost_per_kg_logvar_z'].exp(), reduction='mean')
 
-        loss_total = loss_feasibility + loss_scalar_fractions * (loss_recovery + loss_purity) + loss_cost_per_kg + loss_cost_per_year
+        loss_total = loss_feasibility + loss_recovery + loss_purity + loss_cost_per_kg
+
+        # todo a bodge but keeps outliers at bay (wherever they might come from)
+        if loss_cost_per_kg.abs() > 1000:
+            continue
 
         total_loss_total += loss_total.item() * len(x)
         total_loss_feasibility += loss_feasibility.item() * len(x)
         total_loss_recovery += loss_recovery.item() * len(x)
         total_loss_purity += loss_purity.item() * len(x)
-        total_loss_cost_per_kg = loss_cost_per_kg.item() * len(x)
-        total_loss_cost_per_year = loss_cost_per_year.item() * len(x)
+        total_loss_cost_per_kg += loss_cost_per_kg.item() * len(x)
+        # total_loss_cost_per_year = loss_cost_per_year.item() * len(x)
 
         preds = (F.sigmoid(y_hat['feasibility']) > 0.5)
         num_correct = (preds == y[:,0]).sum()
@@ -37,5 +41,5 @@ def train_epoch(model, loader, optimizer,):
         'recovery loss': total_loss_recovery / len(loader.dataset),
         'purity loss': total_loss_purity / len(loader.dataset),
         'cost per kg loss': total_loss_cost_per_kg / len(loader.dataset),
-        'cost per year loss': total_loss_cost_per_year / len(loader.dataset)
+        # 'cost per year loss': total_loss_cost_per_year / len(loader.dataset)
     }
