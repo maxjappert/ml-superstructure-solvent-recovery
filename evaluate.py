@@ -84,23 +84,8 @@ def manual_eval(model,
     if stream_kgph['solids'] > 0:
         n_components += 1
 
-    volumetric_flows = {
-        "target": stream_kgph['target'] / props['target'].rho,
-        "solvent2": stream_kgph['solvent2'] / props['solvent2'].rho,
-        "water": stream_kgph['water'] / props['water'].rho,
-        "salt": stream_kgph['salt'] / props['salt'].rho,
-        "solids": stream_kgph['solids'] / props['solids'].rho
-    }
-
-    if model.output == 'feasibility':
-        model_outputs = torch.zeros((4, 4, 4, 5))
-        ground_truths = torch.zeros((4, 4, 4, 5))
-    elif model.output == 'fractions' or model.output == 'cost':
-        model_outputs = torch.zeros((4, 4, 4, 5, 2))
-        ground_truths = torch.zeros((4, 4, 4, 5, 2))
-    else:
-        print('wrong output type')
-        exit(-1)
+    model_outputs = torch.zeros((4, 4, 4, 5, 4))
+    ground_truths = torch.zeros((4, 4, 4, 5, 4))
 
     for solid_removal_idx in solid_removal_idxs:
         for recovery_idx in recovery_idxs:
@@ -122,7 +107,10 @@ def manual_eval(model,
                         idx_refinement=refinement_idx,
                     )
 
-                    ground_truths[solid_removal_idx,recovery_idx,purification_idx,refinement_idx] = not math.isnan(r.cost_usd_per_kg_recovered)
+                    ground_truths[solid_removal_idx,recovery_idx,purification_idx,refinement_idx, 0] = not math.isnan(r.cost_usd_per_kg_recovered)
+                    ground_truths[solid_removal_idx, recovery_idx, purification_idx, refinement_idx, 1] = r.target_recovery
+                    ground_truths[solid_removal_idx, recovery_idx, purification_idx, refinement_idx, 2] = r.target_purity
+                    ground_truths[solid_removal_idx, recovery_idx, purification_idx, refinement_idx, 3] = r.cost_usd_per_kg_recovered
 
                     log_alphas = _log_alphas_pairwise(stream_kgph, props, temperature_C + 273.15)
 
@@ -151,14 +139,12 @@ def manual_eval(model,
                                              refinement_idx])
 
                     tensor_input = dataset.standardiser_X.transform(tensor_input)
-
                     model_output = model(tensor_input)
 
-                    model_output = torch.sigmoid(model_output)
-
-                    model_output = model_output > 0.5
-
-                    model_outputs[solid_removal_idx, recovery_idx,purification_idx,refinement_idx] = model_output
+                    model_outputs[solid_removal_idx, recovery_idx,purification_idx,refinement_idx, 0] = model_output['feasibility'].item() > 0.5
+                    model_outputs[solid_removal_idx, recovery_idx, purification_idx, refinement_idx, 1] = model_output['recovery_mu'].item()
+                    model_outputs[solid_removal_idx, recovery_idx, purification_idx, refinement_idx, 2] = model_output['purity_mu'].item()
+                    model_outputs[solid_removal_idx, recovery_idx, purification_idx, refinement_idx, 3] = model_output['cost_per_kg_mu_z'].item()
 
 
     return {
@@ -168,7 +154,7 @@ def manual_eval(model,
 
 
 def main():
-    output = manual_eval('best_06-07-26_feasibility.pt',
+    output = manual_eval('first_good.pt',
                 '2-methyltetrahydrofuran',
                 'acetone',
                 'sodium bicarbonate',
@@ -176,8 +162,8 @@ def main():
                 300,
                 0,
                 0,
-                0,
-                3, 3, 2, 1)
+                [0],
+                [3], [3], [2], 25)
 
     print(output)
 

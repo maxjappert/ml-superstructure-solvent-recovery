@@ -12,6 +12,7 @@ import numpy as np
 import torch
 import matplotlib.pyplot as plt
 
+from config import PRED_METRICS
 from datasets import Dataset
 from evaluate import manual_eval
 from models import load_model, Model
@@ -20,22 +21,21 @@ from solvent_recovery.properties import get_solvent_props, get_water_props, get_
 
 # ---- 1. Load your pretrained model once, at startup ----
 
-model_name = 'fractions_20260707_155708.pt'
+predicted_metric = 'cost_per_kg'
+
+model_name = 'first_good.pt'
 solvent_target_name = 'nmp'
 solvent2_name = 'ethanol'
 salt_name = 'sodium chloride'
-output = 'fractions'
 solvent_target_flow = 1000
 solvent2_flow = 300
 water_flow = 100
 
-output = 'fractions'
-
-model = Model(output)
+model = Model()
 model.load_state_dict(torch.load(model_name)['model_state_dict'])
 model.eval()
 
-dataset = Dataset('train', output)
+dataset = Dataset('train')
 
 def make_plots(matrix1, matrix2):
     xs, ys, zs = np.meshgrid(
@@ -46,8 +46,11 @@ def make_plots(matrix1, matrix2):
     )
 
     fig1, ax1 = plt.subplots(subplot_kw={"projection": "3d"})
-    if model.output == 'feasibility' or model.output == 'fractions':
+
+    if not predicted_metric == 'cost_per_kg':
         sc = ax1.scatter(xs, ys, zs, c=matrix1.flatten(), cmap="viridis", s=100, vmin=0, vmax=1)
+    else:
+        sc = ax1.scatter(xs, ys, zs, c=matrix1.flatten(), cmap="viridis", s=100)
     fig1.colorbar(sc)
     ax1.set_xlabel("Recovery")
     ax1.set_xticks(np.arange(4))
@@ -67,8 +70,11 @@ def make_plots(matrix1, matrix2):
         indexing="ij",
     )
 
-    if model.output == 'feasibility' or model.output == 'fractions':
+#    if model.output == 'feasibility' or model.output == 'fractions':
+    if not predicted_metric == 'cost_per_kg':
         sc = ax2.scatter(xs, ys, zs, c=matrix2.flatten(), cmap="viridis", s=100, vmin=0, vmax=1)
+    else:
+        sc = ax2.scatter(xs, ys, zs, c=matrix2.flatten(), cmap="viridis", s=100)
     fig2.colorbar(sc)
     ax2.set_xlabel("Recovery")
     ax2.set_xticks(np.arange(4))
@@ -104,23 +110,16 @@ def predict(*fader_values):
                     solid_removal_idxs=[round(fader_values[0])],
                     recovery_idxs=[0, 1, 2, 3],
                     purification_idxs=[0, 1, 2, 3],
-                    refinement_idxs=[0, 1, 2, 3, 4],
-                    ground_truth=True)
+                    refinement_idxs=[0, 1, 2, 3, 4])
 
-    if model.output == 'feasibility':
-        return make_plots(x['predicted'][round(fader_values[0]), :, :, :], x['true'][round(fader_values[0]), :, :, :])
-    elif model.output == 'fractions':
-        predicted = x['predicted'][round(fader_values[0]), :, :, :, 1]
-        true = x['true'][round(fader_values[0]), :, :, :, 1]
-        return make_plots(predicted, true)
-    else:
-        print('faulty output type specified')
-        exit(-1)
+    predicted = x['predicted'][round(fader_values[0]), :, :, :, PRED_METRICS[predicted_metric]]
+    true = x['true'][round(fader_values[0]), :, :, :, PRED_METRICS[predicted_metric]]
+    return make_plots(predicted, true)
 
 
 # ---- 3. Build the fader grid UI ----
 with gr.Blocks() as demo:
-    gr.Markdown(f"## {output} prediction for extracting {solvent_target_name} from a mixture with {solvent2_name} and {salt_name}")
+    gr.Markdown(f"## {predicted_metric} prediction for extracting {solvent_target_name} from a mixture with {solvent2_name} and {salt_name}")
 
     sliders = []
 

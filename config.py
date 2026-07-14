@@ -9,3 +9,10 @@ NUM_WORKERS = 0
 
 loss_scalar_fractions = 1
 loss_scalar_cost = 1
+
+PRED_METRICS = {
+    'feasibility': 0,
+    'recovery': 1,
+    'purity': 2,
+    'cost_per_kg': 3
+}

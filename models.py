@@ -55,8 +55,6 @@ class Model(nn.Module):
         y_hat_fractions = self.net_fractions(hidden)
         y_hat_cost = self.net_cost(hidden)
 
-        # y_hat_combined = torch.cat([y_hat_feasibility, y_hat_fractions, y_hat_cost], dim=1)
-
         return {
             'feasibility': y_hat_feasibility.squeeze(),
             'recovery_mu': y_hat_fractions[:,0],
@@ -65,8 +63,6 @@ class Model(nn.Module):
             'purity_logvar': y_hat_fractions[:,3],
             'cost_per_kg_mu_z': y_hat_cost[:,0],
             'cost_per_kg_logvar_z': y_hat_cost[:,1],
-            # 'cost_per_year_mu_z': y_hat_cost[:,2],
-            # 'cost_per_year_logvar_z': y_hat_cost[:,3]
         }
 
         return y_hat_combined
