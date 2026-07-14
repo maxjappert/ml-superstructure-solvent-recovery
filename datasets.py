@@ -41,7 +41,7 @@ class Dataset(torch.utils.data.Dataset):
         self.y = torch.tensor(output_df.values, dtype=torch.float32)
 
 
-        self.standardiser_X = Standardizer(self.X)
+        self.standardiser_X = Standardiser(self.X)
 
         # self.standardiser_y = Standardizer(self.y[:,3:5])
 
@@ -54,7 +54,7 @@ class Dataset(torch.utils.data.Dataset):
     def __getitem__(self, idx):
         return self.X[idx], self.y[idx]
 
-class Standardizer:
+class Standardiser:
     def __init__(self, data: torch.Tensor):
         self.mean = data.mean(dim=0, keepdim=True)
         self.std = data.std(dim=0, keepdim=True) + 1e-8  # avoid div-by-zero

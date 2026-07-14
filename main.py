@@ -19,8 +19,6 @@ train_loader = DataLoader(train_set, BATCH_SIZE, shuffle=True, num_workers=NUM_W
 val_loader = DataLoader(val_set, BATCH_SIZE)
 test_loader = DataLoader(test_set, BATCH_SIZE)
 
-print()
-
 model = Model().to(DEVICE)
 # loads model for further training
 # model.load_state_dict(torch.load('fractions_20260708_091906.pt')['model_state_dict'])
