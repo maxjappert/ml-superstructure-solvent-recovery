@@ -5,6 +5,7 @@ import torch
 import torch.nn.functional as F
 from torch.nn import Module
 
+import models
 from config import DEVICE, loss_scalar_fractions, loss_scalar_cost
 from datasets import Dataset
 from models import Model
@@ -22,25 +23,17 @@ def evaluate(model, loader):
 
     for x, y in loader:
         x, y = x.to(DEVICE), y.to(DEVICE)
-        y_hat = model(x)
 
-        loss_feasibility = F.binary_cross_entropy_with_logits(y_hat['feasibility'], y[:,0])
-        loss_recovery = loss_scalar_fractions *  F.gaussian_nll_loss(y_hat['recovery_mu'], y[:,1], y_hat['recovery_logvar'].exp(), reduction='mean')
-        loss_purity = loss_scalar_fractions *  F.gaussian_nll_loss(y_hat['purity_mu'], y[:,2], y_hat['purity_logvar'].exp(), reduction='mean')
-        loss_cost_per_kg = loss_scalar_cost * F.gaussian_nll_loss(y_hat['cost_per_kg_mu_z'], y[:,3], y_hat['cost_per_kg_logvar_z'].exp(), reduction='mean')
+        losses = models.get_losses(model, x, y)
 
-        loss_total = loss_feasibility + loss_recovery + loss_purity + loss_cost_per_kg # + loss_cost_per_year
-
-        total_loss_total += loss_total.item() * len(x)
-        total_loss_feasibility += loss_feasibility.item() * len(x)
-        total_loss_recovery += loss_recovery.item() * len(x)
-        total_loss_purity += loss_purity.item() * len(x)
-        total_loss_cost_per_kg += loss_cost_per_kg.item() * len(x)
+        total_loss_total += losses['total'].item() * len(x)
+        total_loss_feasibility += losses['feasibility'].item() * len(x)
+        total_loss_recovery += losses['recovery'].item() * len(x)
+        total_loss_purity += losses['purity'].item() * len(x)
+        total_loss_cost_per_kg += losses['cost_per_kg'].item() * len(x)
         # total_loss_cost_per_year = loss_cost_per_year.item() * len(x)
 
-        preds = (torch.sigmoid(y_hat['feasibility']) > 0.5)
-        num_correct = (preds == y[:,0]).sum()
-        total_correct += num_correct
+        total_correct += losses['num_correct'].item()
 
     return {
         'total loss': total_loss_total / len(loader.dataset),

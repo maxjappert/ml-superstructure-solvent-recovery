@@ -37,21 +37,9 @@ class Dataset(torch.utils.data.Dataset):
                         'target_purity',
                         'cost_usd_per_kg_recovered']]
 
-
-        #if output == 'feasibility':
-        #    output_df = df[['feasible']]
-        #elif output == 'fractions':
-        #    output_df = df[[ 'target_purity',
-        #                     'target_recovery']]
-        #elif output == 'cost':
-        #    output_df = df[['cost_usd_per_kg_recovered',
-        #                     'cost_usd_per_year']]
-        #else:
-        #    print('wrong output form')
-        #    exit(0)
-
         self.X = torch.tensor(input_df.values, dtype=torch.float32)
         self.y = torch.tensor(output_df.values, dtype=torch.float32)
+
 
         self.standardiser_X = Standardizer(self.X)
 
@@ -59,13 +47,6 @@ class Dataset(torch.utils.data.Dataset):
 
         self.X = self.standardiser_X.transform(self.X)
         # self.y[:,3:5] = self.standardiser_y.transform(self.y[:,3:5])
-
-        #self.normalise = normalise
-
-        #if self.normalise:
-        #    self.X = self.standardiser_X.transform(self.X)
-        #    if output == 'cost':
-        #        self.y = self.standardiser_y.transform(self.y)
 
     def __len__(self):
         return len(self.X)

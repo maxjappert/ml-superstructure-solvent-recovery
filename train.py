@@ -1,38 +1,34 @@
 from config import DEVICE, loss_scalar_fractions, loss_scalar_cost
 import torch.nn.functional as F
 
+from models import get_losses
+
+
 def train_epoch(model, loader, optimizer,):
     model.train()
     total_loss_total, total_loss_feasibility, total_loss_recovery, total_loss_purity, total_correct, total_loss_cost_per_kg, total_loss_cost_per_year = 0,0,0,0,0,0,0
     for x, y in loader:
         x, y = x.to(DEVICE), y.to(DEVICE)
         optimizer.zero_grad()
-        # todo add feasibility masking
-        y_hat = model(x)
-        loss_feasibility = F.binary_cross_entropy_with_logits(y_hat['feasibility'], y[:,0])
-        loss_recovery = loss_scalar_fractions * F.gaussian_nll_loss(y_hat['recovery_mu'], y[:,1], y_hat['recovery_logvar'].exp(), reduction='mean')
-        loss_purity = loss_scalar_fractions * F.gaussian_nll_loss(y_hat['purity_mu'], y[:,2], y_hat['purity_logvar'].exp(), reduction='mean')
-        loss_cost_per_kg = loss_scalar_cost * F.gaussian_nll_loss(y_hat['cost_per_kg_mu_z'], y[:,3], y_hat['cost_per_kg_logvar_z'].exp(), reduction='mean')
 
-        loss_total = loss_feasibility + loss_recovery + loss_purity + loss_cost_per_kg
+        # todo add feasibility masking
+        losses = get_losses(model, x, y)
 
         # todo a bodge but keeps outliers at bay (wherever they might come from)
-        if loss_cost_per_kg.abs() > 1000:
+        if losses['cost_per_kg'] > 1000:
             continue
 
-        total_loss_total += loss_total.item() * len(x)
-        total_loss_feasibility += loss_feasibility.item() * len(x)
-        total_loss_recovery += loss_recovery.item() * len(x)
-        total_loss_purity += loss_purity.item() * len(x)
-        total_loss_cost_per_kg += loss_cost_per_kg.item() * len(x)
-        # total_loss_cost_per_year = loss_cost_per_year.item() * len(x)
+        total_loss_total += losses['total'].item() * len(x)
+        total_loss_feasibility += losses['feasibility'].item() * len(x)
+        total_loss_recovery += losses['recovery'].item() * len(x)
+        total_loss_purity += losses['purity'].item() * len(x)
+        total_loss_cost_per_kg += losses['cost_per_kg'].item() * len(x)
 
-        preds = (F.sigmoid(y_hat['feasibility']) > 0.5)
-        num_correct = (preds == y[:,0]).sum()
-        total_correct += num_correct
+        total_correct += losses['num_correct'].item()
 
-        loss_total.backward()
+        losses['total'].backward()
         optimizer.step()
+
 
     return {
         'total loss': total_loss_total / len(loader.dataset),
