@@ -18,12 +18,18 @@ from solvent_recovery.units import _alphas, _log_alphas_pairwise
 def evaluate(model, loader):
     model.eval()
     total_loss, correct = 0.0, 0
+    total_correct = 0
     for x, y in loader:
         x, y = x.to(DEVICE), y.to(DEVICE)
         y_hat = model(x)
         loss = F.binary_cross_entropy_with_logits(y_hat, y)
         total_loss += loss.item() * len(x)
-    return total_loss / len(loader.dataset)
+
+        preds = (torch.sigmoid(y_hat) > 0.5)
+        num_correct = (preds == y).sum()
+        total_correct += num_correct
+
+    return total_loss / len(loader.dataset), total_correct / len(loader.dataset)
 
 @torch.no_grad()
 def manual_eval(model,

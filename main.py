@@ -37,8 +37,8 @@ print(f'started training {checkpoint_filename}')
 best_val = float("inf")
 for epoch in range(EPOCHS):
     train_loss = train_epoch(model, train_loader, optimizer)
-    val_loss = evaluate(model, val_loader)
-    print(f"epoch {epoch:2d} | train {train_loss:.4f} | val {val_loss:.4f}")
+    val_loss, acc = evaluate(model, val_loader)
+    print(f"epoch {epoch:2d} | train {train_loss:.4f} | val {val_loss:.4f} | acc {acc:.4f}")
     if val_loss < best_val:
         best_val = val_loss
         torch.save({'model_state_dict': model.state_dict(),

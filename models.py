@@ -14,16 +14,18 @@ class Model(nn.Module):
                                  nn.Linear(128, 256),
                                  nn.ReLU(),
                                  nn.Dropout(0.5),
-                                 nn.Linear(256, 256),
-                                 nn.ReLU(),
-                                 nn.Dropout(0.5),
-                                 nn.Linear(256, 256),
-                                 nn.ReLU(),
-                                 nn.Dropout(0.5),
-                                 nn.Linear(128, 1))
+                                 nn.Linear(256, 256))
+
+        self.net_feasibility = nn.Sequential(nn.Linear(256, 128),
+                                             nn.ReLU(),
+                                             nn.Dropout(0.5),
+                                             nn.Linear(128, 1),)
+
+
 
     def forward(self, x):
-        y_hat = self.net(x)
+        y_hat = self.net_shared(x)
+        y_hat = self.net_feasibility(y_hat)
 
         return y_hat
 
