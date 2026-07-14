@@ -21,13 +21,21 @@ class Model(nn.Module):
                                              nn.Dropout(0.5),
                                              nn.Linear(128, 1),)
 
+        self.net_fractions = nn.Sequential(nn.Linear(256, 128),
+                                             nn.ReLU(),
+                                             nn.Dropout(0.5),
+                                             nn.Linear(128, 4),)
+
 
 
     def forward(self, x):
-        y_hat = self.net_shared(x)
-        y_hat = self.net_feasibility(y_hat)
+        hidden = self.net_shared(x)
+        y_hat_feasibility = self.net_feasibility(hidden)
+        y_hat_fractions = self.net_fractions(hidden)
 
-        return y_hat
+        y_hat_combined = torch.cat([y_hat_feasibility, y_hat_fractions], dim=1)
+
+        return y_hat_combined
 
 def load_model(name):
     model = Model()

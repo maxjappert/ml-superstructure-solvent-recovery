@@ -17,19 +17,48 @@ from solvent_recovery.units import _alphas, _log_alphas_pairwise
 @torch.no_grad()
 def evaluate(model, loader):
     model.eval()
-    total_loss, correct = 0.0, 0
+    total_loss_total, correct, total_loss_feasibility, total_loss_recovery, total_loss_purity = 0, 0, 0, 0, 0
     total_correct = 0
+
     for x, y in loader:
         x, y = x.to(DEVICE), y.to(DEVICE)
         y_hat = model(x)
-        loss = F.binary_cross_entropy_with_logits(y_hat, y)
-        total_loss += loss.item() * len(x)
 
-        preds = (torch.sigmoid(y_hat) > 0.5)
-        num_correct = (preds == y).sum()
+        # y_hat = loader.dataset.standardiser_y.inverse_transform(y_hat)
+
+        y_hat_feasibility = y_hat[:,0]
+        y_hat_recovery_mu = y_hat[:,1]
+        y_hat_recovery_logvar = y_hat[:,2]
+        y_hat_purity_mu = y_hat[:,3]
+        y_hat_purity_logvar = y_hat[:,4]
+        loss_feasibility = F.binary_cross_entropy_with_logits(y_hat_feasibility, y[:,0])
+        loss_recovery = F.gaussian_nll_loss(y_hat_recovery_mu, y[:,1], y_hat_recovery_logvar.exp(), reduction='mean')
+        loss_purity = F.gaussian_nll_loss(y_hat_purity_mu, y[:,2], y_hat_purity_logvar.exp(), reduction='mean')
+
+        loss_total = loss_feasibility + loss_recovery + loss_purity
+
+        total_loss_total += loss_total.item() * len(x)
+        total_loss_feasibility += loss_feasibility.item() * len(x)
+        total_loss_recovery += loss_recovery.item() * len(x)
+        total_loss_purity += loss_purity.item() * len(x)
+
+        preds = (torch.sigmoid(y_hat_feasibility) > 0.5)
+        num_correct = (preds == y[:,0]).sum()
         total_correct += num_correct
 
-    return total_loss / len(loader.dataset), total_correct / len(loader.dataset)
+    return {
+        'total loss': total_loss_total / len(loader.dataset),
+        'feasibility loss': total_loss_feasibility / len(loader.dataset),
+        'feasibility accuracy': total_correct / len(loader.dataset),
+        'recovery loss': total_loss_recovery / len(loader.dataset),
+        'purity loss': total_loss_purity / len(loader.dataset),
+    }
+
+    return (total_loss_total / len(loader.dataset),
+            total_loss_feasibility / len(loader.dataset),
+            total_correct / len(loader.dataset),
+            total_loss_recovery / len(loader.dataset),
+            total_loss_purity / len(loader.dataset))
 
 @torch.no_grad()
 def manual_eval(model,

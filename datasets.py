@@ -32,7 +32,9 @@ class Dataset(torch.utils.data.Dataset):
                          'refinement_idx',]]
         #]
 
-        output_df = df[['feasible']]
+        output_df = df[['feasible',
+                        'target_recovery',
+                        'target_purity']]
 
 
         #if output == 'feasibility':
@@ -51,9 +53,11 @@ class Dataset(torch.utils.data.Dataset):
         self.y = torch.tensor(output_df.values, dtype=torch.float32)
 
         self.standardiser_X = Standardizer(self.X)
-        #self.standardiser_y = Standardizer(self.y)
+        self.standardiser_y = Standardizer(self.y)
 
         self.X = self.standardiser_X.transform(self.X)
+
+        # self.y = self.standardiser_y.transform(self.y)
 
         #self.normalise = normalise
 

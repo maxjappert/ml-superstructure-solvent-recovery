@@ -36,11 +36,17 @@ print(f'started training {checkpoint_filename}')
 
 best_val = float("inf")
 for epoch in range(EPOCHS):
-    train_loss = train_epoch(model, train_loader, optimizer)
-    val_loss, acc = evaluate(model, val_loader)
-    print(f"epoch {epoch:2d} | train {train_loss:.4f} | val {val_loss:.4f} | acc {acc:.4f}")
-    if val_loss < best_val:
-        best_val = val_loss
+    train_loss_dict = train_epoch(model, train_loader, optimizer)
+    train_loss = train_loss_dict['total loss']
+    eval = evaluate(model, val_loader)
+    print(f"epoch {epoch:2d} \n train | total {train_loss:.4f} | feasibility loss {train_loss_dict['feasibility loss']:.4f} "
+          f"| feasibility prediction acc {train_loss_dict['feasibility accuracy']:.4f} |  recovery loss {train_loss_dict['recovery loss']:.4f} | "
+          f"purity loss {train_loss_dict['purity loss']:.4f} | \n val | total {eval['total loss']:.4f} |"
+          f" feasibility loss {eval['feasibility loss']:.4f} |"
+          f" feasibility prediction acc {eval['feasibility accuracy']:.4f} |"
+          f" recovery loss {eval['recovery loss']:.4f} | purity loss {eval['purity loss']:.4f} |")
+    if eval['total loss'] < best_val:
+        best_val = eval['total loss']
         torch.save({'model_state_dict': model.state_dict(),
                     'optimiser_state_dict': optimizer.state_dict(),
                     'epoch': epoch,
@@ -49,7 +55,7 @@ for epoch in range(EPOCHS):
                     )
 
     train_losses.append(train_loss)
-    val_losses.append(val_loss)
+    val_losses.append(eval['total loss'])
 
 checkpoint = torch.load(checkpoint_filename)
 model.load_state_dict(checkpoint['model_state_dict'])
