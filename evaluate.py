@@ -8,7 +8,7 @@ from torch.nn import Module
 import models
 from config import DEVICE, loss_scalar_fractions, loss_scalar_cost
 from datasets import Dataset
-from models import Model
+from models import Model, LossBreakdown
 from solvent_recovery import compute
 from solvent_recovery.properties import get_solvent_props, get_water_props, get_salt_props, get_solids_props, \
     get_extractant_props
@@ -18,32 +18,26 @@ from solvent_recovery.units import _alphas, _log_alphas_pairwise
 @torch.no_grad()
 def evaluate(model, loader):
     model.eval()
-    total_loss_total, correct, total_loss_feasibility, total_loss_recovery, total_loss_purity, total_loss_cost_per_kg, total_loss_cost_per_year = 0, 0, 0, 0, 0, 0, 0
-    total_correct = 0
+
+    total_losses = LossBreakdown.zeros()
 
     for x, y in loader:
         x, y = x.to(DEVICE), y.to(DEVICE)
 
         losses = models.get_losses(model, x, y)
 
-        total_loss_total += losses['total'].item() * len(x)
-        total_loss_feasibility += losses['feasibility'].item() * len(x)
-        total_loss_recovery += losses['recovery'].item() * len(x)
-        total_loss_purity += losses['purity'].item() * len(x)
-        total_loss_cost_per_kg += losses['cost_per_kg'].item() * len(x)
-        # total_loss_cost_per_year = loss_cost_per_year.item() * len(x)
+        total_losses.total += losses.total
+        total_losses.feasibility_bce += losses.feasibility_bce
+        total_losses.feasibility_brier += losses.feasibility_brier
+        total_losses.recovery_nll += losses.recovery_nll
+        total_losses.recovery_rmse += losses.recovery_rmse
+        total_losses.purity_nll += losses.purity_nll
+        total_losses.purity_rmse += losses.purity_rmse
+        total_losses.cost_per_kg_nll += losses.cost_per_kg_nll
+        total_losses.cost_per_kg_rmse += losses.cost_per_kg_rmse
+        total_losses.num_correct += losses.num_correct
 
-        total_correct += losses['num_correct'].item()
-
-    return {
-        'total loss': total_loss_total / len(loader.dataset),
-        'feasibility loss': total_loss_feasibility / len(loader.dataset),
-        'feasibility accuracy': total_correct / len(loader.dataset),
-        'recovery loss': total_loss_recovery / len(loader.dataset),
-        'purity loss': total_loss_purity / len(loader.dataset),
-        'cost per kg loss': total_loss_cost_per_kg / len(loader.dataset),
-        # 'cost per year loss': total_loss_cost_per_year / len(loader.dataset)
-    }
+    return total_losses
 
     return (total_loss_total / len(loader.dataset),
             total_loss_feasibility / len(loader.dataset),

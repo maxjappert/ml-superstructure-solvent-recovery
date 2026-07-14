@@ -7,9 +7,10 @@ import config
 from config import SEED, BATCH_SIZE, DEVICE, EPOCHS, LR, NUM_WORKERS
 from datasets import Dataset
 from evaluate import evaluate
-from models import Model
+from models import Model, LossBreakdown
 from train import train_epoch
 from utils import plot_training
+from visualise import compare_dicts
 
 torch.manual_seed(SEED)
 train_set = Dataset('train')
@@ -27,25 +28,22 @@ optimizer = torch.optim.AdamW(model.parameters(), lr=LR, weight_decay=5e-4)
 # todo create M = 5 models
 checkpoint_filename = f"{datetime.datetime.now().strftime("%Y%m%d_%H%M%S")}.pt"
 
-train_losses = []
-val_losses = []
+train_losses_list = []
+val_losses_list = []
 
 print(f'started training {checkpoint_filename}')
 
 best_val = float("inf")
 for epoch in range(EPOCHS):
-    train_loss_dict = train_epoch(model, train_loader, optimizer)
-    train_loss = train_loss_dict['total loss']
-    eval = evaluate(model, val_loader)
-    print(f"epoch {epoch:2d} \n train | total {train_loss:.4f} | feasibility loss {train_loss_dict['feasibility loss']:.4f} "
-          f"| feasibility prediction acc {train_loss_dict['feasibility accuracy']:.4f} |  recovery loss {train_loss_dict['recovery loss']:.4f} | "
-          f"purity loss {train_loss_dict['purity loss']:.4f} | cost per kg loss {train_loss_dict['cost per kg loss']:.4f}\n "
-          f" val | total {eval['total loss']:.4f} |"
-          f" feasibility loss {eval['feasibility loss']:.4f} |"
-          f" feasibility prediction acc {eval['feasibility accuracy']:.4f} |"
-          f" recovery loss {eval['recovery loss']:.4f} | purity loss {eval['purity loss']:.4f} | cost per kg loss {eval['cost per kg loss']:.4f} |")
-    if eval['total loss'] < best_val:
-        best_val = eval['total loss']
+    train_losses = train_epoch(model, train_loader, optimizer)
+    val_losses = evaluate(model, val_loader)
+    print(f'Epoch {epoch + 1}/{EPOCHS}')
+    print(compare_dicts(train_losses.detached_and_normalised_dict(len(train_set)),
+                        val_losses.detached_and_normalised_dict(len(val_set)),
+                        'Train', 'Validation'))
+
+    if val_losses.total.item() < best_val:
+        best_val = val_losses.total.item()
         torch.save({'model_state_dict': model.state_dict(),
                     'optimiser_state_dict': optimizer.state_dict(),
                     'epoch': epoch,
@@ -53,8 +51,8 @@ for epoch in range(EPOCHS):
                     'val_loss': best_val}, checkpoint_filename,
                     )
 
-    train_losses.append(train_loss)
-    val_losses.append(eval['total loss'])
+    train_losses_list.append(train_losses.detached_and_normalised(len(train_set)))
+    val_losses_list.append(val_losses.detached_and_normalised(len(val_set) ))
 
 checkpoint = torch.load(checkpoint_filename)
 model.load_state_dict(checkpoint['model_state_dict'])

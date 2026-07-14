@@ -1,8 +1,78 @@
+from dataclasses import dataclass, asdict, fields
+from typing import Iterator, Union
+
 import torch
-from torch import nn
+from torch import nn, Tensor
 import torch.nn.functional as F
 
 from config import DEVICE, loss_scalar_fractions, loss_scalar_cost
+
+@dataclass(frozen=False, slots=True)
+class ModelOutput:
+    feasibility_logit: Tensor
+    recovery_mu: Tensor
+    recovery_logvar: Tensor
+    purity_mu: Tensor
+    purity_logvar: Tensor
+    cost_per_kg_mu: Tensor
+    cost_per_kg_logvar: Tensor
+
+
+@dataclass(frozen=False, slots=True)
+class LossLists:
+    total: list
+
+    feasibility_bce: Tensor
+    feasibility_brier: Tensor
+
+    num_correct_nll: Tensor
+    recovery_nll: Tensor
+    recovery_rmse: Tensor
+    purity_nll: Tensor
+    purity_rmse: Tensor
+    cost_per_kg_nll: Tensor
+    cost_per_kg_rmse: Tensor
+
+
+@dataclass(frozen=False, slots=True)
+class LossBreakdown:
+    """Per-batch loss components for the multi-task recovery model."""
+
+    total: Tensor
+
+    feasibility_bce: Tensor
+    feasibility_brier: Tensor
+
+    num_correct: Tensor
+    recovery_nll: Tensor
+    recovery_rmse: Tensor
+    purity_nll: Tensor
+    purity_rmse: Tensor
+    cost_per_kg_nll: Tensor
+    cost_per_kg_rmse: Tensor
+
+    @classmethod
+    def zeros(cls) -> "LossBreakdown":
+        return cls(**{f.name: torch.zeros([]).to(DEVICE) for f in fields(cls)})
+
+    @classmethod
+    def empty(cls) -> "LossBreakdown":
+        return cls(**{f.name: torch.Tensor().unsqueeze(0).to(DEVICE) for f in fields(cls)})
+
+    def as_dict(self) -> dict[str, Loss]:
+        return {f.name: getattr(self, f.name) for f in fields(self)}
+
+    def detached_and_normalised_dict(self, normaliser) -> dict[str, float]:
+        return {
+            f.name: (v.detach().item() / normaliser if isinstance(v := getattr(self, f.name), Tensor) else float(v) / normaliser)
+            for f in fields(self)
+        }
+
+    def detached_and_normalised(self, normaliser) -> LossBreakdown:
+        return LossBreakdown(**{f.name: getattr(self, f.name).item() / normaliser for f in fields(self)})
+
+    def __iter__(self):
+        return iter(self.as_dict().items())
 
 
 class Model(nn.Module):
@@ -55,17 +125,14 @@ class Model(nn.Module):
         y_hat_fractions = self.net_fractions(hidden)
         y_hat_cost = self.net_cost(hidden)
 
-        return {
-            'feasibility': y_hat_feasibility.squeeze(),
-            'recovery_mu': y_hat_fractions[:,0],
-            'recovery_logvar': y_hat_fractions[:,1],
-            'purity_mu': y_hat_fractions[:,2],
-            'purity_logvar': y_hat_fractions[:,3],
-            'cost_per_kg_mu_z': y_hat_cost[:,0],
-            'cost_per_kg_logvar_z': y_hat_cost[:,1],
-        }
+        return ModelOutput(feasibility_logit=y_hat_feasibility.squeeze(),
+                           recovery_mu=y_hat_fractions[:,0],
+                           recovery_logvar=y_hat_fractions[:,1],
+                           purity_mu=y_hat_fractions[:,2],
+                           purity_logvar=y_hat_fractions[:,3],
+                           cost_per_kg_mu=y_hat_cost[:,0],
+                           cost_per_kg_logvar=y_hat_cost[:,1])
 
-        return y_hat_combined
 
 def load_model(name):
     model = Model()
@@ -74,27 +141,47 @@ def load_model(name):
     return model
 
 
-def get_losses(model, x, y):
+def brier_score(logits, labels):
+    probs = torch.sigmoid(logits).squeeze()
+    return ((probs - labels.float()) ** 2).mean()
+
+Loss = Union[Tensor, float]
+
+
+def get_losses(model, x, y) -> LossBreakdown:
     y_hat = model(x)
 
-    loss_feasibility = F.binary_cross_entropy_with_logits(y_hat['feasibility'], y[:, 0])
-    loss_recovery = loss_scalar_fractions * F.gaussian_nll_loss(y_hat['recovery_mu'], y[:, 1],
-                                                                y_hat['recovery_logvar'].exp(), reduction='mean')
-    loss_purity = loss_scalar_fractions * F.gaussian_nll_loss(y_hat['purity_mu'], y[:, 2], y_hat['purity_logvar'].exp(),
+    feasibility_bce = F.binary_cross_entropy_with_logits(y_hat.feasibility_logit, y[:, 0])
+    feasibility_brier = brier_score(y_hat.feasibility_logit, y[:, 0])
+
+    recovery_nll = loss_scalar_fractions * F.gaussian_nll_loss(y_hat.recovery_mu, y[:, 1],
+                                                                y_hat.recovery_logvar.exp(), reduction='mean')
+    recovery_rmse = torch.sqrt(F.mse_loss(y_hat.recovery_mu, y[:, 1]))
+
+    purity_nll = loss_scalar_fractions * F.gaussian_nll_loss(y_hat.purity_mu, y[:, 2], y_hat.purity_logvar.exp(),
                                                               reduction='mean')
-    loss_cost_per_kg = loss_scalar_cost * F.gaussian_nll_loss(y_hat['cost_per_kg_mu_z'], y[:, 3],
-                                                              y_hat['cost_per_kg_logvar_z'].exp(), reduction='mean')
+    purity_rmse = torch.sqrt(F.mse_loss(y_hat.purity_mu, y[:, 2]))
 
-    loss_total = loss_feasibility + loss_recovery + loss_purity + loss_cost_per_kg  # + loss_cost_per_year
+    cost_per_kg_nll = loss_scalar_cost * F.gaussian_nll_loss(y_hat.cost_per_kg_mu, y[:, 3],
+                                                              y_hat.cost_per_kg_logvar.exp(), reduction='mean')
+    cost_per_kg_rmse = torch.sqrt(F.mse_loss(y_hat.cost_per_kg_mu, y[:, 3]))
 
-    preds = (torch.sigmoid(y_hat['feasibility']) > 0.5)
+    loss_total = feasibility_bce + recovery_nll + purity_nll + cost_per_kg_nll  # + loss_cost_per_year
+
+    preds = (torch.sigmoid(y_hat.feasibility_logit) > 0.5)
     num_correct = (preds == y[:, 0]).sum()
 
-    return {
-        'total': loss_total,
-        'feasibility': loss_feasibility,
-        'num_correct': num_correct,
-        'recovery': loss_recovery,
-        'purity': loss_purity,
-        'cost_per_kg': loss_cost_per_kg,
-    }
+    losses = LossBreakdown(
+        total=loss_total * len(x),
+        feasibility_bce=feasibility_bce * len(x),
+        feasibility_brier=feasibility_brier * len(x),
+        num_correct=num_correct,
+        recovery_nll=recovery_nll * len(x),
+        recovery_rmse=recovery_rmse * len(x),
+        purity_nll=purity_nll * len(x),
+        purity_rmse=purity_rmse * len(x),
+        cost_per_kg_nll=cost_per_kg_nll * len(x),
+        cost_per_kg_rmse=cost_per_kg_rmse * len(x),
+    )
+
+    return losses

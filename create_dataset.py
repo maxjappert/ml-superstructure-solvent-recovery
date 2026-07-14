@@ -139,6 +139,12 @@ def create_dataset(type: str, size: int, seed: int):
                 idx_refinement=idxs['refinement'],
             )
 
+
+            # todo bodge bodge bodge
+            if r.cost_usd_per_kg_recovered > 100:
+                print('row skipped because the cost is too high')
+                continue
+
             feasible = not math.isnan(r.cost_usd_per_kg_recovered)
 
             log_alphas = _log_alphas_pairwise(stream_kgph, props, temperature_C + 273.15)

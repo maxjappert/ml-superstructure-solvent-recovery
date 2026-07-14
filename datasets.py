@@ -40,7 +40,6 @@ class Dataset(torch.utils.data.Dataset):
         self.X = torch.tensor(input_df.values, dtype=torch.float32)
         self.y = torch.tensor(output_df.values, dtype=torch.float32)
 
-
         self.standardiser_X = Standardiser(self.X)
 
         # self.standardiser_y = Standardizer(self.y[:,3:5])

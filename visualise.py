@@ -169,5 +169,22 @@ with gr.Blocks() as demo:
     # Initial render
     demo.load(fn=predict, inputs=sliders, outputs=[plot1, plot2])
 
+
+def compare_dicts(a: dict[str, float], b: dict[str, float],
+                  name_a: str = "A", name_b: str = "B") -> str:
+    keys = list(a)  # assumes same keys; use a.keys() | b.keys() if not guaranteed
+    kw = max(len(k) for k in keys)
+    cw = max(len(name_a), len(name_b), 9)  # 9 fits a formatted float
+
+    lines = [f"{'':<{kw}}  {name_a:>{cw}}  {name_b:>{cw}}  {'Δ':>{cw}}"]
+    for k in keys:
+        d = b[k] - a[k]
+        lines.append(
+            f"{k:<{kw}}  {a[k]:>{cw}.3f}  {b[k]:>{cw}.3f}  {d:>{cw}.3f}"
+        )
+
+    lines.append('\n')
+    return "\n".join(lines)
+
 if __name__ == "__main__":
     demo.launch()
