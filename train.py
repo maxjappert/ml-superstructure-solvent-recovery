@@ -71,6 +71,21 @@ def train_ensemble(train_loader, val_loader, M=5):
                                       epoch_losses_breakdown_val.detached_and_normalised_summary_dict(),
                             'Train', 'Validation'))
 
+        mean_val_loss = torch.mean(epoch_losses_breakdown_val.total).item()
+
+        if mean_val_loss < best_val:
+            print('yay new best mean!')
+            best_val = mean_val_loss
+            torch.save({'model_state_dicts': [model.state_dict() for model in models],
+                        'optimiser_state_dict': [optimiser.state_dict() for optimiser in optimisers],
+                        'epoch': epoch,
+                        'hparams': {'seed': config.SEED, 'lr': config.LR, 'bs': config.BATCH_SIZE, 'M': M},
+                        'val_loss': best_val}, checkpoint_filename,
+                       )
+
+    return train_losses_list, val_losses_list
+
+
 def train_single(train_loader, val_loader):
     model = Model().to(DEVICE)
 
@@ -79,7 +94,6 @@ def train_single(train_loader, val_loader):
 
     optimiser = torch.optim.AdamW(model.parameters(), lr=config.LR, weight_decay=config.WEIGHT_DECAY)
 
-    # todo create M = 5 models
     checkpoint_filename = f"{datetime.datetime.now().strftime("%Y%m%d_%H%M%S")}.pt"
 
     train_losses_list = []

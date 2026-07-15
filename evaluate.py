@@ -39,11 +39,6 @@ def evaluate(model, loader, plots=False):
 
     return total_losses
 
-    return (total_loss_total / len(loader.dataset),
-            total_loss_feasibility / len(loader.dataset),
-            total_correct / len(loader.dataset),
-            total_loss_recovery / len(loader.dataset),
-            total_loss_purity / len(loader.dataset))
 
 @torch.no_grad()
 def manual_eval(model,
