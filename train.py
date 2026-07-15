@@ -1,7 +1,112 @@
-from config import DEVICE, loss_scalar_fractions, loss_scalar_cost
+import datetime
+
+import pandas as pd
+import torch
+from torch.utils.data import DataLoader
+
+import config
+from config import DEVICE, loss_scalar_fractions, loss_scalar_cost, SEED, BATCH_SIZE, NUM_WORKERS, EPOCHS
 import torch.nn.functional as F
 
-from models import get_losses, LossBreakdown
+from datasets import Dataset
+from evaluate import evaluate
+from models import get_losses, LossBreakdown, Model
+from visualise import compare_dicts_numerical, compare_dicts_strings
+import numpy as np
+
+torch.manual_seed(SEED)
+
+def transfer_ensemble_losses(losses: list[LossBreakdown], normaliser: int) -> LossBreakdown:
+    '''
+    Takes a list of LossBreakdowns, one per model, and converts into a LossBreakdown object, where all fields
+    contain the losses for each model. The respective first first axes describe the models.
+    '''
+    loss_breakdown = LossBreakdown.from_shape(len(losses))
+
+    for model_id in range(len(losses)):
+        loss_breakdown.total[model_id] = losses[model_id].total.item() / normaliser
+        loss_breakdown.feasibility_bce[model_id] = losses[model_id].feasibility_bce.item() / normaliser
+        loss_breakdown.feasibility_brier[model_id] = losses[model_id].feasibility_brier.item() / normaliser
+        loss_breakdown.recovery_nll[model_id] = losses[model_id].recovery_nll.item() / normaliser
+        loss_breakdown.recovery_rmse[model_id] = losses[model_id].recovery_rmse.item() / normaliser
+        loss_breakdown.purity_nll[model_id] = losses[model_id].purity_nll.item() / normaliser
+        loss_breakdown.purity_rmse[model_id] = losses[model_id].purity_rmse.item() / normaliser
+        loss_breakdown.cost_per_kg_nll[model_id] = losses[model_id].cost_per_kg_nll.item() / normaliser
+        loss_breakdown.cost_per_kg_rmse[model_id] = losses[model_id].cost_per_kg_rmse.item() / normaliser
+        loss_breakdown.num_correct = losses[model_id].num_correct.item() / normaliser
+
+    return loss_breakdown
+
+def train_ensemble(train_loader, val_loader, M=5):
+    models = [Model().to(DEVICE) for _ in range(M)]
+    optimisers = [torch.optim.AdamW(model.parameters(), lr=config.LR, weight_decay=config.WEIGHT_DECAY) for model in models]
+
+    checkpoint_filename = f"{M}_ensemble_{datetime.datetime.now().strftime("%Y%m%d_%H%M%S")}.pt"
+
+    train_losses_list = []
+    val_losses_list = []
+
+    print(f'started training {checkpoint_filename}')
+
+    best_val = float("inf")
+    for epoch in range(EPOCHS):
+        print(f'Epoch {epoch + 1}/{EPOCHS}')
+
+        epoch_losses_train = []
+        epoch_losses_val = []
+
+        for model_id in range(M):
+            train_losses = train_epoch(models[model_id], train_loader, optimisers[model_id])
+            val_losses = evaluate(models[model_id], val_loader)
+
+            epoch_losses_train.append(train_losses)
+            epoch_losses_val.append(val_losses)
+
+        epoch_losses_breakdown_train = transfer_ensemble_losses(epoch_losses_train, len(train_loader.dataset))
+        train_losses_list.append(epoch_losses_train)
+        epoch_losses_breakdown_val = transfer_ensemble_losses(epoch_losses_val, len(val_loader.dataset))
+        val_losses_list.append(epoch_losses_breakdown_val)
+
+        print(compare_dicts_strings(epoch_losses_breakdown_train.detached_and_normalised_summary_dict(),
+                                      epoch_losses_breakdown_val.detached_and_normalised_summary_dict(),
+                            'Train', 'Validation'))
+
+def train_single(train_loader, val_loader):
+    model = Model().to(DEVICE)
+
+    # if model_name is not None:
+    #     model.load_state_dict(torch.load('fractions_20260708_091906.pt')['model_state_dict'])
+
+    optimiser = torch.optim.AdamW(model.parameters(), lr=config.LR, weight_decay=config.WEIGHT_DECAY)
+
+    # todo create M = 5 models
+    checkpoint_filename = f"{datetime.datetime.now().strftime("%Y%m%d_%H%M%S")}.pt"
+
+    train_losses_list = []
+    val_losses_list = []
+
+    print(f'started training {checkpoint_filename}')
+
+    best_val = float("inf")
+    for epoch in range(EPOCHS):
+        train_losses = train_epoch(model, train_loader, optimiser)
+        val_losses = evaluate(model, val_loader)
+        print(f'Epoch {epoch + 1}/{EPOCHS}')
+        print(compare_dicts_numerical(train_losses.detached_and_normalised_dict(len(train_loader.dataset)),
+                                      val_losses.detached_and_normalised_dict(len(val_loader.dataset)),
+                            'Train', 'Validation'))
+
+        if val_losses.total.item() < best_val:
+            best_val = val_losses.total.item()
+            torch.save({'model_state_dict': model.state_dict(),
+                        'optimiser_state_dict': optimiser.state_dict(),
+                        'epoch': epoch,
+                        'hparams': {'seed': config.SEED, 'lr': config.LR, 'bs': config.BATCH_SIZE},
+                        'val_loss': best_val}, checkpoint_filename,
+                       )
+
+        train_losses_list.append(train_losses.detached_and_normalised(len(train_loader.dataset)))
+        val_losses_list.append(val_losses.detached_and_normalised(len(val_loader.dataset)))
 
 
 def train_epoch(model, loader, optimizer,):
@@ -12,7 +117,6 @@ def train_epoch(model, loader, optimizer,):
         x, y = x.to(DEVICE), y.to(DEVICE)
         optimizer.zero_grad()
 
-        # todo add feasibility masking
         losses = get_losses(model, x, y)
 
         # todo a bodge but keeps outliers at bay (wherever they might come from)
@@ -34,3 +138,15 @@ def train_epoch(model, loader, optimizer,):
         total_losses.num_correct += losses.num_correct
 
     return total_losses
+
+
+def main():
+    train_set = Dataset('train')
+    val_set = Dataset('val')
+    train_loader = DataLoader(train_set, BATCH_SIZE, shuffle=True, num_workers=NUM_WORKERS)
+    val_loader = DataLoader(val_set, BATCH_SIZE, num_workers=NUM_WORKERS)
+    train_ensemble(train_loader, val_loader)
+
+
+if __name__ == '__main__':
+    main()

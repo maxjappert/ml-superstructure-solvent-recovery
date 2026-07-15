@@ -10,7 +10,7 @@ from evaluate import evaluate
 from models import Model, LossBreakdown
 from train import train_epoch
 from utils import plot_training
-from visualise import compare_dicts
+from visualise import compare_dicts_numerical
 
 torch.manual_seed(SEED)
 train_set = Dataset('train')
@@ -38,8 +38,8 @@ for epoch in range(EPOCHS):
     train_losses = train_epoch(model, train_loader, optimizer)
     val_losses = evaluate(model, val_loader)
     print(f'Epoch {epoch + 1}/{EPOCHS}')
-    print(compare_dicts(train_losses.detached_and_normalised_dict(len(train_set)),
-                        val_losses.detached_and_normalised_dict(len(val_set)),
+    print(compare_dicts_numerical(train_losses.detached_and_normalised_dict(len(train_set)),
+                                  val_losses.detached_and_normalised_dict(len(val_set)),
                         'Train', 'Validation'))
 
     if val_losses.total.item() < best_val:

@@ -59,12 +59,22 @@ class LossBreakdown:
     def empty(cls) -> "LossBreakdown":
         return cls(**{f.name: torch.Tensor().unsqueeze(0).to(DEVICE) for f in fields(cls)})
 
+    @classmethod
+    def from_shape(cls, shape):
+        return LossBreakdown(**{f.name: torch.zeros(shape).to(DEVICE) for f in fields(cls)})
+
     def as_dict(self) -> dict[str, Loss]:
         return {f.name: getattr(self, f.name) for f in fields(self)}
 
     def detached_and_normalised_dict(self, normaliser) -> dict[str, float]:
         return {
             f.name: (v.detach().item() / normaliser if isinstance(v := getattr(self, f.name), Tensor) else float(v) / normaliser)
+            for f in fields(self)
+        }
+
+    def detached_and_normalised_summary_dict(self):
+        return {
+            f.name: (f'{torch.mean(v).item().__round__(3)} +- {torch.std(v).item().__round__(3)}' if isinstance(v := getattr(self, f.name), Tensor) else float(v))
             for f in fields(self)
         }
 
