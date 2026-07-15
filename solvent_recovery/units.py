@@ -158,7 +158,7 @@ def _alphas(stream: Stream, props: Props, T_ref: float) -> Dict[str, float]:
     pmin = min(ps.values())
     return {k: ps[k] / max(pmin, 1e-9) for k in vols}
 
-def _log_alphas_pairwise(stream: Stream, props: Props, T_ref: float) -> Dict[str, Dict[str, float]]:
+def log_alphas_pairwise(stream: Stream, props: Props, T_ref: float) -> Dict[str, Dict[str, float]]:
     vols = _liquid_keys_guarantee(stream, props)
     ps = {k: props[k].Psat(T_ref) for k in vols}
     l = len(ps)

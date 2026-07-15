@@ -8,7 +8,7 @@ from pydoc import cram
 from solvent_recovery import compute, list_solvents, list_salts
 from solvent_recovery.properties import get_solvent_props, get_water_props, get_salt_props, get_solids_props, \
     get_extractant_props
-from solvent_recovery.units import _alphas, _log_alphas_pairwise
+from solvent_recovery.units import _alphas, log_alphas_pairwise
 
 
 def create_dataset(type: str, size: int, seed: int):
@@ -147,7 +147,7 @@ def create_dataset(type: str, size: int, seed: int):
 
             feasible = not math.isnan(r.cost_usd_per_kg_recovered)
 
-            log_alphas = _log_alphas_pairwise(stream_kgph, props, temperature_C + 273.15)
+            log_alphas = log_alphas_pairwise(stream_kgph, props, temperature_C + 273.15)
 
             writer.writerow([names['target'],
                              names['solvent2'],

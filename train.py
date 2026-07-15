@@ -160,6 +160,7 @@ def main():
     train_loader = DataLoader(train_set, BATCH_SIZE, shuffle=True, num_workers=NUM_WORKERS)
     val_loader = DataLoader(val_set, BATCH_SIZE, num_workers=NUM_WORKERS)
     train_ensemble(train_loader, val_loader)
+    # train_single(train_loader, val_loader)
 
 
 if __name__ == '__main__':

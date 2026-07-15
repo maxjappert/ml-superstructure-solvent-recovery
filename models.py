@@ -19,22 +19,6 @@ class ModelOutput:
 
 
 @dataclass(frozen=False, slots=True)
-class LossLists:
-    total: list
-
-    feasibility_bce: Tensor
-    feasibility_brier: Tensor
-
-    num_correct_nll: Tensor
-    recovery_nll: Tensor
-    recovery_rmse: Tensor
-    purity_nll: Tensor
-    purity_rmse: Tensor
-    cost_per_kg_nll: Tensor
-    cost_per_kg_rmse: Tensor
-
-
-@dataclass(frozen=False, slots=True)
 class LossBreakdown:
     """Per-batch loss components for the multi-task recovery model."""
 
@@ -114,8 +98,7 @@ class Model(nn.Module):
                                              nn.Linear(256, 128),
                                              nn.ReLU(),
                                              nn.Dropout(dropout_rate),
-                                             nn.Linear(128, 4),
-                                             nn.ReLU())
+                                             nn.Linear(128, 4))
 
         self.net_cost = nn.Sequential(nn.Linear(512, 256),
                                              nn.ReLU(),
@@ -123,8 +106,7 @@ class Model(nn.Module):
                                              nn.Linear(256, 128),
                                              nn.ReLU(),
                                              nn.Dropout(dropout_rate),
-                                             nn.Linear(128, 2),
-                                             nn.ReLU())
+                                             nn.Linear(128, 2))
 
 
 
@@ -156,7 +138,6 @@ def brier_score(logits, labels):
     return ((probs - labels.float()) ** 2).mean()
 
 Loss = Union[Tensor, float]
-
 
 def get_losses(model, x, y) -> LossBreakdown:
     y_hat = model(x)

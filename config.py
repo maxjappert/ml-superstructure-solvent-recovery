@@ -2,11 +2,11 @@ import torch
 
 SEED = 42
 EPOCHS = 1000
-BATCH_SIZE = 4192
+BATCH_SIZE = 256
 LR = 3e-4
 WEIGHT_DECAY = 1e-4
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else 'cpu')
-NUM_WORKERS = 0
+NUM_WORKERS = 4
 
 loss_scalar_fractions = 1
 loss_scalar_cost = 1
