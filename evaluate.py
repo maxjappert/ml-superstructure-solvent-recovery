@@ -16,7 +16,7 @@ from solvent_recovery.units import _alphas, _log_alphas_pairwise
 
 
 @torch.no_grad()
-def evaluate(model, loader):
+def evaluate(model, loader, plots=False):
     model.eval()
 
     total_losses = LossBreakdown.zeros()

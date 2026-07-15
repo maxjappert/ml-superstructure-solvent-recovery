@@ -33,7 +33,7 @@ def transfer_ensemble_losses(losses: list[LossBreakdown], normaliser: int) -> Lo
         loss_breakdown.purity_rmse[model_id] = losses[model_id].purity_rmse.item() / normaliser
         loss_breakdown.cost_per_kg_nll[model_id] = losses[model_id].cost_per_kg_nll.item() / normaliser
         loss_breakdown.cost_per_kg_rmse[model_id] = losses[model_id].cost_per_kg_rmse.item() / normaliser
-        loss_breakdown.num_correct = losses[model_id].num_correct.item() / normaliser
+        loss_breakdown.num_correct[model_id] = losses[model_id].num_correct.item() / normaliser
 
     return loss_breakdown
 
