@@ -43,12 +43,12 @@ def evaluate(model, loader, plots=False, model_name=None):
     if plots:
         if model_name is None:
             print('error! no model name specified.')
-        create_calibration_plot(model, loader, model_name)
+        create_calibration_plot_binary_classification(model, loader, model_name)
 
     return total_losses
 
 @torch.no_grad()
-def create_calibration_plot(model, dataset, model_name, n_bins=20):
+def create_calibration_plot_binary_classification(model, dataset, model_name, n_bins=40):
     model.eval().to(DEVICE)
 
     x, y = dataset.X.to(DEVICE), dataset.y.to(DEVICE)
@@ -218,7 +218,7 @@ def main():
     model.load_state_dict(torch.load(name)['model_state_dict'])
     dataset = Dataset('val')
 
-    create_calibration_plot(model, dataset, name)
+    create_calibration_plot_binary_classification(model, dataset, name)
 
 
 if __name__ == '__main__':
