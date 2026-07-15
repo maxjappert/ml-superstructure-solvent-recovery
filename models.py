@@ -154,17 +154,19 @@ def get_losses(model, x, y) -> LossBreakdown:
     feasibility_bce = F.binary_cross_entropy_with_logits(y_hat.feasibility_logit, y[:, 0])
     feasibility_brier = brier_score(y_hat.feasibility_logit, y[:, 0])
 
-    recovery_nll = loss_scalar_fractions * F.gaussian_nll_loss(y_hat.recovery_mu, y[:, 1],
-                                                                y_hat.recovery_logvar.exp(), reduction='mean')
-    recovery_rmse = torch.sqrt(F.mse_loss(y_hat.recovery_mu, y[:, 1]))
+    feasible_mask = y[:, 0] == 1
 
-    purity_nll = loss_scalar_fractions * F.gaussian_nll_loss(y_hat.purity_mu, y[:, 2], y_hat.purity_logvar.exp(),
+    recovery_nll = loss_scalar_fractions * F.gaussian_nll_loss(y_hat.recovery_mu[feasible_mask], y[feasible_mask, 1],
+                                                                y_hat.recovery_logvar[feasible_mask].exp(), reduction='mean')
+    recovery_rmse = torch.sqrt(F.mse_loss(y_hat.recovery_mu[feasible_mask], y[feasible_mask, 1]))
+
+    purity_nll = loss_scalar_fractions * F.gaussian_nll_loss(y_hat.purity_mu[feasible_mask], y[feasible_mask, 2], y_hat.purity_logvar[feasible_mask].exp(),
                                                               reduction='mean')
-    purity_rmse = torch.sqrt(F.mse_loss(y_hat.purity_mu, y[:, 2]))
+    purity_rmse = torch.sqrt(F.mse_loss(y_hat.purity_mu[feasible_mask], y[feasible_mask, 2]))
 
-    cost_per_kg_nll = loss_scalar_cost * F.gaussian_nll_loss(y_hat.cost_per_kg_mu, y[:, 3],
-                                                              y_hat.cost_per_kg_logvar.exp(), reduction='mean')
-    cost_per_kg_rmse = torch.sqrt(F.mse_loss(y_hat.cost_per_kg_mu, y[:, 3]))
+    cost_per_kg_nll = loss_scalar_cost * F.gaussian_nll_loss(y_hat.cost_per_kg_mu[feasible_mask], y[feasible_mask, 3],
+                                                              y_hat.cost_per_kg_logvar[feasible_mask].exp(), reduction='mean')
+    cost_per_kg_rmse = torch.sqrt(F.mse_loss(y_hat.cost_per_kg_mu[feasible_mask], y[feasible_mask, 3]))
 
     loss_total = feasibility_bce + recovery_nll + purity_nll + cost_per_kg_nll  # + loss_cost_per_year
 
