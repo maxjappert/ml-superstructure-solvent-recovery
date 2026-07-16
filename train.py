@@ -1,4 +1,5 @@
 import datetime
+import sys
 
 import pandas as pd
 import torch
@@ -161,6 +162,15 @@ def main():
     val_loader = DataLoader(val_set, BATCH_SIZE, num_workers=NUM_WORKERS)
     train_ensemble(train_loader, val_loader)
     # train_single(train_loader, val_loader)
+
+    training_type = sys.argv[1]
+    if training_type == 'ensemble':
+        train_ensemble(train_loader, val_loader)
+    elif training_type == 'single':
+        train_single(train_loader, val_loader)
+    else:
+        print('Unknown training type')
+        sys.exit(-1)
 
 
 if __name__ == '__main__':
