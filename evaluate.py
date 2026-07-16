@@ -29,16 +29,16 @@ def evaluate(model, loader, plots=False, model_name=None):
 
         losses = models.get_losses(model, x, y)
 
-        total_losses.total += losses.total
-        total_losses.feasibility_bce += losses.feasibility_bce
-        total_losses.feasibility_brier += losses.feasibility_brier
-        total_losses.recovery_nll += losses.recovery_nll
-        total_losses.recovery_rmse += losses.recovery_rmse
-        total_losses.purity_nll += losses.purity_nll
-        total_losses.purity_rmse += losses.purity_rmse
-        total_losses.cost_per_kg_nll += losses.cost_per_kg_nll
-        total_losses.cost_per_kg_rmse += losses.cost_per_kg_rmse
-        total_losses.num_correct += losses.num_correct
+        total_losses.total += losses.total.detach()
+        total_losses.feasibility_bce += losses.feasibility_bce.detach()
+        total_losses.feasibility_brier += losses.feasibility_brier.detach()
+        total_losses.recovery_nll += losses.recovery_nll.detach()
+        total_losses.recovery_rmse += losses.recovery_rmse.detach()
+        total_losses.purity_nll += losses.purity_nll.detach()
+        total_losses.purity_rmse += losses.purity_rmse.detach()
+        total_losses.cost_per_kg_nll += losses.cost_per_kg_nll.detach()
+        total_losses.cost_per_kg_rmse += losses.cost_per_kg_rmse.detach()
+        total_losses.num_correct += losses.num_correct.detach()
 
     if plots:
         if model_name is None:
@@ -279,8 +279,6 @@ def main():
 
     create_regression_calibration_plot(model, dataset, name, 'purity')
     create_regression_calibration_plot(model, dataset, name, 'cost_per_kg')
-    # create_calibration_plot_binary_classification(model, dataset, name)
-
 
 if __name__ == '__main__':
     main()

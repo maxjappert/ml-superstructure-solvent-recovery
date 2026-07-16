@@ -17,6 +17,12 @@ class ModelOutput:
     cost_per_kg_mu: Tensor
     cost_per_kg_logvar: Tensor
 
+@dataclass(frozen=False, slots=True)
+class ModelDistributionOutput:
+    feasibility: dict
+    recovery: dict
+    purity: dict
+    cost_per_kg: dict
 
 @dataclass(frozen=False, slots=True)
 class LossBreakdown:
@@ -178,3 +184,75 @@ def get_losses(model, x, y) -> LossBreakdown:
     )
 
     return losses
+
+def bernoulli_entropy(p):
+    return -p * torch.log(p) - (1 - p) * torch.log(1 - p)
+
+def get_ensemble_predictions(ensemble: list[Model], input_tensor):
+    M = len(ensemble)
+    raw_outputs = []
+
+    for model in ensemble:
+        raw_outputs.append(model(input_tensor))
+
+    ps = []
+
+    for i in range(M):
+        ps.append(torch.sigmoid(raw_outputs[M].feasibility_logit))
+
+    p_mean = torch.Tensor(ps).mean()
+    feasibility_total_uncertainty = bernoulli_entropy(p_mean)
+    feasibility_aleatoric = torch.Tensor([bernoulli_entropy(p) for p in ps]).mean()
+    feasibility_epistemic = feasibility_total_uncertainty - feasibility_aleatoric
+
+    mus = []
+    vars = []
+    var_plus_mu_squareds = []
+    for i in range(M):
+        mus.append(raw_outputs[i].recovery_mu)
+        vars.append(raw_outputs[i].recovery_logvar.exp())
+        var_plus_mu_squareds.append(raw_outputs[i].recovery_logvar.exp() + torch.pow(raw_outputs[i].recovery_mu, 2))
+
+    recovery_mu = torch.Tensor(mus).mean()
+    recovery_var = torch.Tensor(var_plus_mu_squareds).mean() - torch.pow(recovery_mu, 2)
+    recovery_dist = torch.distributions.Normal(recovery_mu, recovery_var)
+
+    recovery_epistemic = torch.var(torch.Tensor(mus))
+    recovery_aleatoric = torch.mean(torch.Tensor(vars))
+
+    mus = []
+    vars = []
+    var_plus_mu_squareds = []
+    for i in range(M):
+        mus.append(raw_outputs[i].purity_mu)
+        vars.append(raw_outputs[i].purity_logvar.exp())
+        var_plus_mu_squareds.append(raw_outputs[i].purity_logvar.exp() + torch.pow(raw_outputs[i].purity_mu, 2))
+
+    purity_mu = torch.Tensor(mus).mean()
+    purity_var = torch.Tensor(var_plus_mu_squareds).mean() - torch.pow(purity_mu, 2)
+    purity_dist = torch.distributions.Normal(purity_mu, purity_var)
+
+    purity_epistemic = torch.var(torch.Tensor(mus))
+    purity_aleatoric = torch.mean(torch.Tensor(vars))
+
+    mus = []
+    vars = []
+    var_plus_mu_squareds = []
+    for i in range(M):
+        mus.append(raw_outputs[i].cost_per_kg_mu)
+        vars.append(raw_outputs[i].cost_per_kg_logvar.exp())
+        var_plus_mu_squareds.append(raw_outputs[i].cost_per_kg_logvar.exp() + torch.pow(raw_outputs[i].cost_per_kg_mu, 2))
+
+    cost_per_kg_mu = torch.Tensor(mus).mean()
+    cost_per_kg_var = torch.Tensor(var_plus_mu_squareds).mean() - torch.pow(purity_mu, 2)
+    cost_per_kg_dist = torch.distributions.Normal(cost_per_kg_mu, cost_per_kg_var)
+
+    cost_per_kg_epistemic = torch.var(torch.Tensor(mus))
+    cost_per_kg_aleatoric = torch.mean(torch.Tensor(vars))
+
+    return ModelDistributionOutput(feasibility={'dist': cost_per_kg_dist,
+                                                'epistemic': cost_per_kg_epistemic,
+                                                'aleatoric':cost_per_kg_aleatoric},
+                                   recovery={'dist': recovery_dist, 'epistemic': recovery_epistemic, 'aleatoric': recovery_aleatoric},
+                                   purity={'dist': purity_dist, 'epistemic': purity_epistemic, 'aleatoric': purity_aleatoric},
+                                   cost_per_kg={'dist': cost_per_kg_dist, 'epistemic': cost_per_kg_epistemic, 'aleatoric': cost_per_kg_aleatoric},)
