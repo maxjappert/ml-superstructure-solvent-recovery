@@ -47,17 +47,66 @@ def evaluate(model, loader, plots=False, model_name=None):
 
     return total_losses
 
+
+@torch.no_grad()
+def create_regression_calibration_plot(model: Model, dataset: Dataset, model_name: str, prediction: str, num_bins=20):
+    model.eval().to(DEVICE)
+
+    # todo: allow for selecting the different regression outputs
+
+    x, y = dataset.X.to(DEVICE), dataset.y.to(DEVICE)
+
+    y_hat = model(x)
+
+    x, y = x.cpu(), y.cpu()
+
+    mu = y_hat.recovery_mu.cpu()
+    var = y_hat.recovery_logvar.exp().cpu()
+
+    # take the observed outcome y and shove it through the model's own predicted cdf
+    pit = torch.distributions.Normal(mu, torch.sqrt(var)).cdf(y[:,1])
+
+    p = np.linspace(0.05, 0.95, num_bins)
+    p_hat = []
+
+    for level in p:
+        # The z-value from the equations for confidence intervals
+        z = torch.distributions.Normal(0., 1.).icdf(torch.tensor(level))
+        # Equation 3 from Kuleshov et al (2018)
+        p_hat.append((y[:,1] <= (mu + z * torch.sqrt(var))).float().mean())
+
+    plt.figure(figsize=(5, 5))
+    plt.plot([0, 1], [0, 1], 'k--', label='perfect')  # dotted diagonal
+    plt.scatter(p, p_hat, s=20, alpha=0.7, label='model')
+    plt.xlabel('True probability $p$')
+    plt.ylabel('Observed probability $\\hat{p}$')
+    plt.xlim(0, 1)
+    plt.ylim(0, 1)
+    plt.grid(alpha=0.3)
+    plt.legend()
+    plt.tight_layout()
+    plt.savefig(os.path.join('plots', model_name, f'{prediction}_calibration'), dpi=150)
+    plt.close()
+
+
+    # p_hat = np.array([(pit <= p).sum() / y.size()[0] for p in pit])
+    # levels = np.linspace(0.05, 0.95, 19)
+    # observed = [(pit <= p).sum() / y.size()[0] for p in levels]
+    # plt.scatter(levels, observed)
+    # plt.show()
+
+
 @torch.no_grad()
 def create_calibration_plot_binary_classification(model, dataset, model_name, n_bins=40):
     model.eval().to(DEVICE)
 
     x, y = dataset.X.to(DEVICE), dataset.y.to(DEVICE)
 
-    y_hat_logits = model(x)
+    y_hat = model(x)
 
     x, y = x.cpu(), y.cpu()
 
-    probs = torch.sigmoid(y_hat_logits.feasibility_logit).detach().cpu()
+    probs = torch.sigmoid(y_hat.feasibility_logit).detach().cpu()
 
     bins_y = []
     bins_y_hat = []
@@ -218,7 +267,8 @@ def main():
     model.load_state_dict(torch.load(name)['model_state_dict'])
     dataset = Dataset('val')
 
-    create_calibration_plot_binary_classification(model, dataset, name)
+    create_regression_calibration_plot(model, dataset, name, 'recovery')
+    # create_calibration_plot_binary_classification(model, dataset, name)
 
 
 if __name__ == '__main__':
