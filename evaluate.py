@@ -246,10 +246,10 @@ def manual_eval(model,
                     tensor_input = dataset.standardiser_X.transform(tensor_input)
                     model_output = model(tensor_input)
 
-                    model_outputs[solid_removal_idx, recovery_idx,purification_idx,refinement_idx, 0] = model_output['feasibility'].item() > 0.5
-                    model_outputs[solid_removal_idx, recovery_idx, purification_idx, refinement_idx, 1] = model_output['recovery_mu'].item()
-                    model_outputs[solid_removal_idx, recovery_idx, purification_idx, refinement_idx, 2] = model_output['purity_mu'].item()
-                    model_outputs[solid_removal_idx, recovery_idx, purification_idx, refinement_idx, 3] = model_output['cost_per_kg_mu_z'].item()
+                    model_outputs[solid_removal_idx, recovery_idx,purification_idx,refinement_idx, 0] = torch.sigmoid(model_output.feasibility_logit).item() > 0.5
+                    model_outputs[solid_removal_idx, recovery_idx, purification_idx, refinement_idx, 1] = model_output.recovery_mu.item()
+                    model_outputs[solid_removal_idx, recovery_idx, purification_idx, refinement_idx, 2] = model_output.purity_mu.item()
+                    model_outputs[solid_removal_idx, recovery_idx, purification_idx, refinement_idx, 3] = model_output.cost_per_kg_mu.item()
 
 
     return {

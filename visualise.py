@@ -23,7 +23,7 @@ from solvent_recovery.properties import get_solvent_props, get_water_props, get_
 
 predicted_metric = 'cost_per_kg'
 
-model_name = 'first_good.pt'
+model_name = '20260715_152407.pt' # 'first_good.pt'
 solvent_target_name = 'nmp'
 solvent2_name = 'ethanol'
 salt_name = 'sodium chloride'
@@ -114,6 +114,9 @@ def predict(*fader_values):
 
     predicted = x['predicted'][round(fader_values[0]), :, :, :, PRED_METRICS[predicted_metric]]
     true = x['true'][round(fader_values[0]), :, :, :, PRED_METRICS[predicted_metric]]
+
+    print((predicted == true).sum())
+
     return make_plots(predicted, true)
 
 
