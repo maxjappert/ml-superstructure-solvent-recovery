@@ -60,25 +60,35 @@ def create_regression_calibration_plot(model: Model, dataset: Dataset, model_nam
 
     x, y = x.cpu(), y.cpu()
 
-    mu = y_hat.recovery_mu.cpu()
-    var = y_hat.recovery_logvar.exp().cpu()
+    if prediction == 'recovery':
+        mu = y_hat.recovery_mu.cpu()
+        var = y_hat.recovery_logvar.exp().cpu()
+        pred_idx = 1
+    elif prediction == 'purity':
+        mu = y_hat.purity_mu.cpu()
+        var = y_hat.purity_logvar.exp().cpu()
+        pred_idx = 2
+    elif prediction == 'cost_per_kg':
+        mu = y_hat.cost_per_kg_mu.cpu()
+        var = y_hat.cost_per_kg_logvar.exp().cpu()
+        pred_idx = 3
+    else:
+        print('incorrect prediction specified')
+        return
 
-    # take the observed outcome y and shove it through the model's own predicted cdf
-    pit = torch.distributions.Normal(mu, torch.sqrt(var)).cdf(y[:,1])
-
-    p = np.linspace(0.05, 0.95, num_bins)
+    p = np.linspace(0.01, 0.99, num_bins)
     p_hat = []
 
     for level in p:
         # The z-value from the equations for confidence intervals
         z = torch.distributions.Normal(0., 1.).icdf(torch.tensor(level))
         # Equation 3 from Kuleshov et al (2018)
-        p_hat.append((y[:,1] <= (mu + z * torch.sqrt(var))).float().mean())
+        p_hat.append((y[:,pred_idx] <= (mu + z * torch.sqrt(var))).float().mean())
 
     plt.figure(figsize=(5, 5))
     plt.plot([0, 1], [0, 1], 'k--', label='perfect')  # dotted diagonal
     plt.scatter(p, p_hat, s=20, alpha=0.7, label='model')
-    plt.xlabel('True probability $p$')
+    plt.xlabel('Nominal probability $p$')
     plt.ylabel('Observed probability $\\hat{p}$')
     plt.xlim(0, 1)
     plt.ylim(0, 1)
@@ -267,7 +277,8 @@ def main():
     model.load_state_dict(torch.load(name)['model_state_dict'])
     dataset = Dataset('val')
 
-    create_regression_calibration_plot(model, dataset, name, 'recovery')
+    create_regression_calibration_plot(model, dataset, name, 'purity')
+    create_regression_calibration_plot(model, dataset, name, 'cost_per_kg')
     # create_calibration_plot_binary_classification(model, dataset, name)
 
 
