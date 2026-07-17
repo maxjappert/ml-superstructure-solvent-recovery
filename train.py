@@ -95,7 +95,7 @@ def train_single(train_loader, val_loader):
 
     optimiser = torch.optim.AdamW(model.parameters(), lr=config.LR, weight_decay=config.WEIGHT_DECAY)
 
-    checkpoint_filename = f"{datetime.datetime.now().strftime("%Y%m%d_%H%M%S")}.pt"
+    checkpoint_filename = f"single_{datetime.datetime.now().strftime("%Y%m%d_%H%M%S")}.pt"
 
     train_losses_list = []
     val_losses_list = []
@@ -160,7 +160,7 @@ def main():
     val_set = Dataset('val')
     train_loader = DataLoader(train_set, BATCH_SIZE, shuffle=True, num_workers=NUM_WORKERS)
     val_loader = DataLoader(val_set, BATCH_SIZE, num_workers=NUM_WORKERS)
-    train_ensemble(train_loader, val_loader)
+    # train_ensemble(train_loader, val_loader)
     # train_single(train_loader, val_loader)
 
     training_type = sys.argv[1]

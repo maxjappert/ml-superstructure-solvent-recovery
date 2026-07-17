@@ -82,7 +82,6 @@ def compute(solvent_target_name: str,
         if v < 0:
             raise ValueError(f"{nm} must be >= 0")
 
-    # ---- resolve properties
     props = {
         "target": get_solvent_props(solvent_target_name),
         "solvent2": get_solvent_props(solvent2_name),

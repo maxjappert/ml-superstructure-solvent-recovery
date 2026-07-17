@@ -6,6 +6,10 @@ from torch import nn, Tensor
 import torch.nn.functional as F
 
 from config import DEVICE, loss_scalar_fractions, loss_scalar_cost
+from datasets import Dataset
+from solvent_recovery.properties import get_solvent_props, get_salt_props, get_water_props, get_solids_props
+from solvent_recovery.units import log_alphas_pairwise
+
 
 @dataclass(frozen=False, slots=True)
 class ModelOutput:
@@ -19,10 +23,39 @@ class ModelOutput:
 
 @dataclass(frozen=False, slots=True)
 class ModelDistributionOutput:
-    feasibility: dict
-    recovery: dict
-    purity: dict
-    cost_per_kg: dict
+    feasibility: Union[dict, bool]
+    recovery: Union[dict, float]
+    purity: Union[dict, float]
+    cost_per_kg: Union[dict, float]
+
+#@dataclass(frozen=False, slots=True)
+class StreamComposition:
+    def __init__(self, target_name, target_kgph, solvent2_name, solvent2_kgph, salt_name, salt_kgph, water_kgph, solids_kgph):
+        self.target_solvent = {'props': get_solvent_props(target_name),
+                               'kgph': target_kgph}
+        self.solvent2 = {'props': get_solvent_props(solvent2_name),
+                         'kgph': solvent2_kgph}
+        self.salt = {'props': get_salt_props(salt_name),
+                     'kgph': salt_kgph}
+        self.water = {'props': get_water_props(),
+                      'kgph': water_kgph}
+        self.solids = {'props': get_solids_props(),
+                       'kgph': solids_kgph}
+
+
+    def get_kgph_dict(self) -> dict:
+        return {'target': self.target_solvent['kgph'],
+                     'solvent2': self.solvent2['kgph'],
+                     'salt': self.salt['kgph'],
+                     'water': self.water['kgph'],
+                     'solids': self.solids['kgph']}
+
+    def get_props_dict(self) -> dict:
+        return {'target': self.target_solvent['props'],
+                      'solvent2': self.solvent2['props'],
+                      'salt': self.salt['props'],
+                      'water': self.water['props'],
+                      'solids': self.solids['props']}
 
 @dataclass(frozen=False, slots=True)
 class LossBreakdown:
@@ -188,8 +221,38 @@ def get_losses(model, x, y) -> LossBreakdown:
 def bernoulli_entropy(p):
     return -p * torch.log(p) - (1 - p) * torch.log(1 - p)
 
-def get_ensemble_predictions(ensemble: list[Model], input_tensor):
+def get_ensemble_predictions(ensemble: list, stream: StreamComposition, temperature_C: float, superstructure_idxs, data_name='train'):
     M = len(ensemble)
+
+    log_alphas = log_alphas_pairwise(stream.get_kgph_dict(), stream.get_props_dict(), temperature_C + 273.15)
+
+    input_tensor = torch.tensor([stream.target_solvent['kgph'],
+                                 stream.solvent2['kgph'],
+                                 stream.water['kgph'],
+                                 stream.salt['kgph'],
+                                 stream.solids['kgph'],
+                                 temperature_C,
+                                 stream.target_solvent['props'].MW,
+                                 stream.target_solvent['props'].rho,
+                                 stream.target_solvent['props'].Tb,
+                                 stream.target_solvent['props'].Hvap,
+                                 stream.target_solvent['props'].Cp,
+                                 stream.target_solvent['props'].logP,
+                                 log_alphas['target']['solvent2'],
+                                 log_alphas['target']['water'],
+                                 stream.solvent2['props'].MW,
+                                 stream.solvent2['props'].rho,
+                                 stream.solvent2['props'].Tb,
+                                 stream.solvent2['props'].Hvap,
+                                 stream.solvent2['props'].Cp,
+                                 stream.solvent2['props'].logP,
+                                 superstructure_idxs[0],
+                                superstructure_idxs[1],
+                                superstructure_idxs[2],
+                                superstructure_idxs[3]])
+
+    input_tensor = Dataset(data_name).standardiser_X.transform(input_tensor)
+
     raw_outputs = []
 
     for model in ensemble:
@@ -198,7 +261,7 @@ def get_ensemble_predictions(ensemble: list[Model], input_tensor):
     ps = []
 
     for i in range(M):
-        ps.append(torch.sigmoid(raw_outputs[M].feasibility_logit))
+        ps.append(torch.sigmoid(raw_outputs[i].feasibility_logit))
 
     p_mean = torch.Tensor(ps).mean()
     feasibility_total_uncertainty = bernoulli_entropy(p_mean)
@@ -215,9 +278,9 @@ def get_ensemble_predictions(ensemble: list[Model], input_tensor):
 
     recovery_mu = torch.Tensor(mus).mean()
     recovery_var = torch.Tensor(var_plus_mu_squareds).mean() - torch.pow(recovery_mu, 2)
-    recovery_dist = torch.distributions.Normal(recovery_mu, recovery_var)
+    recovery_dist = torch.distributions.Normal(recovery_mu, recovery_var.sqrt())
 
-    recovery_epistemic = torch.var(torch.Tensor(mus))
+    recovery_epistemic = torch.var(torch.Tensor(mus), unbiased=False)
     recovery_aleatoric = torch.mean(torch.Tensor(vars))
 
     mus = []
@@ -230,9 +293,9 @@ def get_ensemble_predictions(ensemble: list[Model], input_tensor):
 
     purity_mu = torch.Tensor(mus).mean()
     purity_var = torch.Tensor(var_plus_mu_squareds).mean() - torch.pow(purity_mu, 2)
-    purity_dist = torch.distributions.Normal(purity_mu, purity_var)
+    purity_dist = torch.distributions.Normal(purity_mu, purity_var.sqrt())
 
-    purity_epistemic = torch.var(torch.Tensor(mus))
+    purity_epistemic = torch.var(torch.Tensor(mus), unbiased=False)
     purity_aleatoric = torch.mean(torch.Tensor(vars))
 
     mus = []
@@ -244,15 +307,15 @@ def get_ensemble_predictions(ensemble: list[Model], input_tensor):
         var_plus_mu_squareds.append(raw_outputs[i].cost_per_kg_logvar.exp() + torch.pow(raw_outputs[i].cost_per_kg_mu, 2))
 
     cost_per_kg_mu = torch.Tensor(mus).mean()
-    cost_per_kg_var = torch.Tensor(var_plus_mu_squareds).mean() - torch.pow(purity_mu, 2)
-    cost_per_kg_dist = torch.distributions.Normal(cost_per_kg_mu, cost_per_kg_var)
+    cost_per_kg_var = torch.Tensor(var_plus_mu_squareds).mean() - torch.pow(cost_per_kg_mu, 2)
+    cost_per_kg_dist = torch.distributions.Normal(cost_per_kg_mu, cost_per_kg_var.sqrt())
 
-    cost_per_kg_epistemic = torch.var(torch.Tensor(mus))
+    cost_per_kg_epistemic = torch.var(torch.Tensor(mus), unbiased=False)
     cost_per_kg_aleatoric = torch.mean(torch.Tensor(vars))
 
-    return ModelDistributionOutput(feasibility={'dist': cost_per_kg_dist,
-                                                'epistemic': cost_per_kg_epistemic,
-                                                'aleatoric':cost_per_kg_aleatoric},
+    return ModelDistributionOutput(feasibility={'dist': torch.distributions.Bernoulli(p_mean),
+                                                'epistemic': feasibility_epistemic,
+                                                'aleatoric':feasibility_aleatoric},
                                    recovery={'dist': recovery_dist, 'epistemic': recovery_epistemic, 'aleatoric': recovery_aleatoric},
                                    purity={'dist': purity_dist, 'epistemic': purity_epistemic, 'aleatoric': purity_aleatoric},
                                    cost_per_kg={'dist': cost_per_kg_dist, 'epistemic': cost_per_kg_epistemic, 'aleatoric': cost_per_kg_aleatoric},)

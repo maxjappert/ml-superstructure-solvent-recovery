@@ -14,7 +14,7 @@ import matplotlib.pyplot as plt
 
 from config import PRED_METRICS
 from datasets import Dataset
-from evaluate import manual_eval
+from evaluate import matrix_eval
 from models import load_model, Model
 from solvent_recovery.properties import get_solvent_props, get_water_props, get_salt_props, get_solids_props, \
     get_extractant_props
@@ -99,7 +99,7 @@ def predict(*fader_values):
         "extractant": get_extractant_props(),
     }
 
-    x = manual_eval(model=model,
+    x = matrix_eval(model=model,
                     props=props,
                     dataset=dataset,
                     solvent_target_flow=fader_values[1],

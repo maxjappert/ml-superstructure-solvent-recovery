@@ -12,7 +12,7 @@ from torch.utils.data import DataLoader
 import models
 from config import DEVICE, loss_scalar_fractions, loss_scalar_cost, BATCH_SIZE
 from datasets import Dataset
-from models import Model, LossBreakdown
+from models import Model, LossBreakdown, get_ensemble_predictions, StreamComposition
 from solvent_recovery import compute
 from solvent_recovery.properties import get_solvent_props, get_water_props, get_salt_props, get_solids_props, \
     get_extractant_props
@@ -52,7 +52,7 @@ def evaluate(model, loader, plots=False, model_name=None):
 def create_regression_calibration_plot(model: Model, dataset: Dataset, model_name: str, prediction: str, num_bins=20):
     model.eval().to(DEVICE)
 
-    # todo: allow for selecting the different regression outputs
+    # todo re-build for ensemble model
 
     x, y = dataset.X.to(DEVICE), dataset.y.to(DEVICE)
 
@@ -154,10 +154,56 @@ def create_calibration_plot_binary_classification(model, dataset, model_name, n_
     plt.savefig(os.path.join('plots', model_name, 'feasibility_calibration'), dpi=150)
     plt.close()
 
+@torch.no_grad()
+def manual_ensemble_eval(models_name,
+                         M,
+                         stream: models.StreamComposition,
+                         solid_removal_idx,
+                         recovery_idx,
+                         purification_idx,
+                         refinement_idx,
+                         temperature_C=25):
+
+    model_list = [Model() for _ in range(M)]
+
+    for i in range(M):
+        model_list.append(Model())
+        model_list[i].load_state_dict(torch.load(models_name)['model_state_dicts'][i])
+        model_list[i].eval()
+
+    r = compute(
+        solvent_target_name=stream.target_solvent['props'].name,
+        solvent2_name=stream.solvent2['props'].name,
+        salt_name=stream.salt['props'].name,
+        temperature_C=temperature_C,
+        solvent_target_kgph=stream.target_solvent['kgph'],
+        solvent2_kgph=stream.target_solvent['kgph'],
+        water_kgph=stream.water['kgph'],
+        salt_kgph=stream.salt['kgph'],
+        solids_kgph=stream.solids['kgph'],
+        idx_solids_removal=solid_removal_idx,
+        idx_recovery=recovery_idx,
+        idx_purification=purification_idx,
+        idx_refinement=refinement_idx,
+    )
+
+    ground_truth = models.ModelDistributionOutput(feasibility=r.feasible,
+                                                  recovery=r.target_recovery,
+                                                  purity=r.target_purity,
+                                                  cost_per_kg=r.cost_usd_per_kg_recovered)
+
+
+    return {
+        'predicted': get_ensemble_predictions(model_list,
+                                              stream,
+                                              temperature_C,
+                                              [solid_removal_idx, recovery_idx, purification_idx, refinement_idx]),
+        'true': ground_truth
+    }
 
 
 @torch.no_grad()
-def manual_eval(model,
+def matrix_eval(model,
                 props,
                 dataset,
                 solvent_target_flow,
@@ -272,13 +318,26 @@ def main():
     #
     # print(output)
 
-    model = Model()
-    name = '20260715_152407.pt'
-    model.load_state_dict(torch.load(name)['model_state_dict'])
-    dataset = Dataset('val')
+    # model = Model()
+    # name = 'ensemble_best_150726.pt'
+    # model.load_state_dict(torch.load(name)['model_state_dict'])
+    # dataset = Dataset('val')
 
-    create_regression_calibration_plot(model, dataset, name, 'purity')
-    create_regression_calibration_plot(model, dataset, name, 'cost_per_kg')
+    M = 5
+
+    stream = StreamComposition(target_name='2-methyltetrahydrofuran',
+                               target_kgph=34,
+                               solvent2_name='acetone',
+                               solvent2_kgph=34,
+                               salt_name='sodium bicarbonate',
+                               salt_kgph=34,
+                               water_kgph=34,
+                               solids_kgph=3)
+
+    print(manual_ensemble_eval('ensemble_best_150726.pt', M, stream, 2, 1, 2, 3))
+
+    # create_regression_calibration_plot(model, dataset, name, 'purity')
+    # create_regression_calibration_plot(model, dataset, name, 'cost_per_kg')
 
 if __name__ == '__main__':
     main()
