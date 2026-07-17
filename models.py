@@ -38,6 +38,7 @@ def load_ensemble(checkpoint_name: str) -> list[Model]:
         model_list.append(Model())
         model_list[i].load_state_dict(checkpoint['model_state_dicts'][i])
         model_list[i].eval()
+        model_list[i].to(DEVICE)
 
     return model_list
 
@@ -197,7 +198,7 @@ def load_model(name):
     return model
 
 def new_ensemble(M):
-    return [Model() for _ in range(M)]
+    return [Model().to(DEVICE) for _ in range(M)]
 
 def brier_score(logits, labels):
     probs = torch.sigmoid(logits).squeeze()
@@ -248,11 +249,77 @@ def get_losses(model, x, y) -> LossBreakdown:
 def bernoulli_entropy(p):
     return -p * torch.log(p + eps) - (1 - p) * torch.log(1 - p + eps)
 
-# def get_ensemble_predictions_from_tensor(input_tensor)
-
-def get_ensemble_predictions(ensemble: list, stream: StreamComposition, temperature_C: float, superstructure_idxs, data_name='train'):
+def get_ensemble_predictions_from_tensor(ensemble, input_tensor):
     M = len(ensemble)
 
+    raw_outputs = []
+
+    for model in ensemble:
+        raw_outputs.append(model(input_tensor.to(DEVICE)))
+
+    ps = []
+
+    for i in range(M):
+        ps.append(torch.sigmoid(raw_outputs[i].feasibility_logit).detach())
+
+    p_mean = torch.Tensor(ps).mean()
+    feasibility_total_uncertainty = bernoulli_entropy(p_mean)
+    feasibility_aleatoric = torch.Tensor([bernoulli_entropy(p) for p in ps]).mean()
+    feasibility_epistemic = feasibility_total_uncertainty - feasibility_aleatoric
+
+    mus = []
+    vars = []
+    var_plus_mu_squareds = []
+    for i in range(M):
+        mus.append(raw_outputs[i].recovery_mu.detach())
+        vars.append(raw_outputs[i].recovery_logvar.exp().detach())
+        var_plus_mu_squareds.append(raw_outputs[i].recovery_logvar.exp().detach() + torch.pow(raw_outputs[i].recovery_mu.detach(), 2))
+
+    recovery_mu = torch.Tensor(mus).mean()
+    recovery_var = torch.Tensor(var_plus_mu_squareds).mean() - torch.pow(recovery_mu, 2)
+    recovery_dist = torch.distributions.Normal(recovery_mu, recovery_var.sqrt())
+
+    recovery_epistemic = torch.var(torch.Tensor(mus), unbiased=False)
+    recovery_aleatoric = torch.mean(torch.Tensor(vars))
+
+    mus = []
+    vars = []
+    var_plus_mu_squareds = []
+    for i in range(M):
+        mus.append(raw_outputs[i].purity_mu.detach())
+        vars.append(raw_outputs[i].purity_logvar.exp().detach())
+        var_plus_mu_squareds.append(raw_outputs[i].purity_logvar.exp().detach() + torch.pow(raw_outputs[i].purity_mu.detach(), 2))
+
+    purity_mu = torch.Tensor(mus).mean()
+    purity_var = torch.Tensor(var_plus_mu_squareds).mean() - torch.pow(purity_mu, 2)
+    purity_dist = torch.distributions.Normal(purity_mu, purity_var.sqrt())
+
+    purity_epistemic = torch.var(torch.Tensor(mus), unbiased=False)
+    purity_aleatoric = torch.mean(torch.Tensor(vars))
+
+    mus = []
+    vars = []
+    var_plus_mu_squareds = []
+    for i in range(M):
+        mus.append(raw_outputs[i].cost_per_kg_mu.detach())
+        vars.append(raw_outputs[i].cost_per_kg_logvar.exp().detach())
+        var_plus_mu_squareds.append(raw_outputs[i].cost_per_kg_logvar.exp().detach() + torch.pow(raw_outputs[i].cost_per_kg_mu.detach(), 2))
+
+    cost_per_kg_mu = torch.Tensor(mus).mean()
+    cost_per_kg_var = torch.Tensor(var_plus_mu_squareds).mean() - torch.pow(cost_per_kg_mu, 2)
+    cost_per_kg_dist = torch.distributions.Normal(cost_per_kg_mu, cost_per_kg_var.sqrt())
+
+    cost_per_kg_epistemic = torch.var(torch.Tensor(mus), unbiased=False)
+    cost_per_kg_aleatoric = torch.mean(torch.Tensor(vars))
+
+    return ModelDistributionOutput(feasibility={'dist': torch.distributions.Bernoulli(p_mean),
+                                                'epistemic': feasibility_epistemic,
+                                                'aleatoric':feasibility_aleatoric},
+                                   recovery={'dist': recovery_dist, 'epistemic': recovery_epistemic, 'aleatoric': recovery_aleatoric},
+                                   purity={'dist': purity_dist, 'epistemic': purity_epistemic, 'aleatoric': purity_aleatoric},
+                                   cost_per_kg={'dist': cost_per_kg_dist, 'epistemic': cost_per_kg_epistemic, 'aleatoric': cost_per_kg_aleatoric},)
+
+def convert_data_to_input_tensor(stream: StreamComposition, temperature_C: float, superstructure_idxs, data_name='train'):
     log_alphas = log_alphas_pairwise(stream.get_kgph_dict(), stream.get_props_dict(), temperature_C + 273.15)
 
     input_tensor = torch.tensor([stream.target_solvent['kgph'],
@@ -280,74 +347,13 @@ def get_ensemble_predictions(ensemble: list, stream: StreamComposition, temperat
                                 superstructure_idxs[2],
                                 superstructure_idxs[3]])
 
-    input_tensor = Dataset(data_name).standardiser_X.transform(input_tensor)
+    return Dataset(data_name).standardiser_X.transform(input_tensor)
 
-    raw_outputs = []
 
-    for model in ensemble:
-        raw_outputs.append(model(input_tensor))
+def get_ensemble_predictions(ensemble: list, stream: StreamComposition, temperature_C: float, superstructure_idxs, data_name='train'):
+    input_tensor = convert_data_to_input_tensor(stream, temperature_C, superstructure_idxs, data_name='data_name')
 
-    ps = []
-
-    for i in range(M):
-        ps.append(torch.sigmoid(raw_outputs[i].feasibility_logit))
-
-    p_mean = torch.Tensor(ps).mean()
-    feasibility_total_uncertainty = bernoulli_entropy(p_mean)
-    feasibility_aleatoric = torch.Tensor([bernoulli_entropy(p) for p in ps]).mean()
-    feasibility_epistemic = feasibility_total_uncertainty - feasibility_aleatoric
-
-    mus = []
-    vars = []
-    var_plus_mu_squareds = []
-    for i in range(M):
-        mus.append(raw_outputs[i].recovery_mu)
-        vars.append(raw_outputs[i].recovery_logvar.exp())
-        var_plus_mu_squareds.append(raw_outputs[i].recovery_logvar.exp() + torch.pow(raw_outputs[i].recovery_mu, 2))
-
-    recovery_mu = torch.Tensor(mus).mean()
-    recovery_var = torch.Tensor(var_plus_mu_squareds).mean() - torch.pow(recovery_mu, 2)
-    recovery_dist = torch.distributions.Normal(recovery_mu, recovery_var.sqrt())
-
-    recovery_epistemic = torch.var(torch.Tensor(mus), unbiased=False)
-    recovery_aleatoric = torch.mean(torch.Tensor(vars))
-
-    mus = []
-    vars = []
-    var_plus_mu_squareds = []
-    for i in range(M):
-        mus.append(raw_outputs[i].purity_mu)
-        vars.append(raw_outputs[i].purity_logvar.exp())
-        var_plus_mu_squareds.append(raw_outputs[i].purity_logvar.exp() + torch.pow(raw_outputs[i].purity_mu, 2))
-
-    purity_mu = torch.Tensor(mus).mean()
-    purity_var = torch.Tensor(var_plus_mu_squareds).mean() - torch.pow(purity_mu, 2)
-    purity_dist = torch.distributions.Normal(purity_mu, purity_var.sqrt())
-
-    purity_epistemic = torch.var(torch.Tensor(mus), unbiased=False)
-    purity_aleatoric = torch.mean(torch.Tensor(vars))
-
-    mus = []
-    vars = []
-    var_plus_mu_squareds = []
-    for i in range(M):
-        mus.append(raw_outputs[i].cost_per_kg_mu)
-        vars.append(raw_outputs[i].cost_per_kg_logvar.exp())
-        var_plus_mu_squareds.append(raw_outputs[i].cost_per_kg_logvar.exp() + torch.pow(raw_outputs[i].cost_per_kg_mu, 2))
-
-    cost_per_kg_mu = torch.Tensor(mus).mean()
-    cost_per_kg_var = torch.Tensor(var_plus_mu_squareds).mean() - torch.pow(cost_per_kg_mu, 2)
-    cost_per_kg_dist = torch.distributions.Normal(cost_per_kg_mu, cost_per_kg_var.sqrt())
-
-    cost_per_kg_epistemic = torch.var(torch.Tensor(mus), unbiased=False)
-    cost_per_kg_aleatoric = torch.mean(torch.Tensor(vars))
-
-    return ModelDistributionOutput(feasibility={'dist': torch.distributions.Bernoulli(p_mean),
-                                                'epistemic': feasibility_epistemic,
-                                                'aleatoric':feasibility_aleatoric},
-                                   recovery={'dist': recovery_dist, 'epistemic': recovery_epistemic, 'aleatoric': recovery_aleatoric},
-                                   purity={'dist': purity_dist, 'epistemic': purity_epistemic, 'aleatoric': purity_aleatoric},
-                                   cost_per_kg={'dist': cost_per_kg_dist, 'epistemic': cost_per_kg_epistemic, 'aleatoric': cost_per_kg_aleatoric},)
+    return get_ensemble_predictions_from_tensor(ensemble, input_tensor)
 
 def get_single_prediction(model, stream: StreamComposition, temperature_C: float, superstructure_idxs, data_name='train'):
     log_alphas = log_alphas_pairwise(stream.get_kgph_dict(), stream.get_props_dict(), temperature_C + 273.15)
