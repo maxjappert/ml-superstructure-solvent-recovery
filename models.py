@@ -28,6 +28,31 @@ class ModelDistributionOutput:
     purity: Union[dict, float]
     cost_per_kg: Union[dict, float]
 
+def load_ensemble(checkpoint_name: str) -> list[Model]:
+    checkpoint = torch.load(checkpoint_name)
+    M = checkpoint['hparams']['M']
+
+    model_list = [Model() for _ in range(M)]
+
+    for i in range(M):
+        model_list.append(Model())
+        model_list[i].load_state_dict(checkpoint['model_state_dicts'][i])
+        model_list[i].eval()
+
+    return model_list
+
+def print_model_output_comparison(y_hat: ModelDistributionOutput, y: ModelDistributionOutput):
+    recovery = y_hat.recovery['dist']
+    purity = y_hat.purity['dist']
+    cost_per_kg = y_hat.cost_per_kg['dist']
+
+    output = (f'Predicted feasibility with {(y_hat.feasibility['dist'].probs * 100):.2f}% probability. Ground truth {y.feasibility}.\n'
+              f'Predicted recovery is {(recovery.mean * 100):.2f}% while the true is {(y.recovery*100):.2f}%. \n'
+              f'Predicted purity is {(purity.mean * 100):.2f}% while the true is {(y.purity * 100):.2f}%. \n'
+              f'Predicted cost per kg is {cost_per_kg.mean:.2f} while the true is {y.cost_per_kg :.2f}.')
+
+    return output
+
 #@dataclass(frozen=False, slots=True)
 class StreamComposition:
     def __init__(self, target_name, target_kgph, solvent2_name, solvent2_kgph, salt_name, salt_kgph, water_kgph, solids_kgph):
@@ -319,3 +344,35 @@ def get_ensemble_predictions(ensemble: list, stream: StreamComposition, temperat
                                    recovery={'dist': recovery_dist, 'epistemic': recovery_epistemic, 'aleatoric': recovery_aleatoric},
                                    purity={'dist': purity_dist, 'epistemic': purity_epistemic, 'aleatoric': purity_aleatoric},
                                    cost_per_kg={'dist': cost_per_kg_dist, 'epistemic': cost_per_kg_epistemic, 'aleatoric': cost_per_kg_aleatoric},)
+
+def get_single_prediction(model, stream: StreamComposition, temperature_C: float, superstructure_idxs, data_name='train'):
+    log_alphas = log_alphas_pairwise(stream.get_kgph_dict(), stream.get_props_dict(), temperature_C + 273.15)
+
+    input_tensor = torch.tensor([stream.target_solvent['kgph'],
+                                 stream.solvent2['kgph'],
+                                 stream.water['kgph'],
+                                 stream.salt['kgph'],
+                                 stream.solids['kgph'],
+                                 temperature_C,
+                                 stream.target_solvent['props'].MW,
+                                 stream.target_solvent['props'].rho,
+                                 stream.target_solvent['props'].Tb,
+                                 stream.target_solvent['props'].Hvap,
+                                 stream.target_solvent['props'].Cp,
+                                 stream.target_solvent['props'].logP,
+                                 log_alphas['target']['solvent2'],
+                                 log_alphas['target']['water'],
+                                 stream.solvent2['props'].MW,
+                                 stream.solvent2['props'].rho,
+                                 stream.solvent2['props'].Tb,
+                                 stream.solvent2['props'].Hvap,
+                                 stream.solvent2['props'].Cp,
+                                 stream.solvent2['props'].logP,
+                                 superstructure_idxs[0],
+                                superstructure_idxs[1],
+                                superstructure_idxs[2],
+                                superstructure_idxs[3]]).to('cpu')
+
+    input_tensor = Dataset(data_name).standardiser_X.transform(input_tensor)
+
+    return model(input_tensor)

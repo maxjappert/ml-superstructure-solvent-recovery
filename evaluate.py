@@ -12,7 +12,8 @@ from torch.utils.data import DataLoader
 import models
 from config import DEVICE, loss_scalar_fractions, loss_scalar_cost, BATCH_SIZE
 from datasets import Dataset
-from models import Model, LossBreakdown, get_ensemble_predictions, StreamComposition
+from models import Model, LossBreakdown, get_ensemble_predictions, StreamComposition, print_model_output_comparison, \
+    load_ensemble, ModelDistributionOutput, get_single_prediction
 from solvent_recovery import compute
 from solvent_recovery.properties import get_solvent_props, get_water_props, get_salt_props, get_solids_props, \
     get_extractant_props
@@ -155,21 +156,14 @@ def create_calibration_plot_binary_classification(model, dataset, model_name, n_
     plt.close()
 
 @torch.no_grad()
-def manual_ensemble_eval(models_name,
-                         M,
-                         stream: models.StreamComposition,
-                         solid_removal_idx,
-                         recovery_idx,
-                         purification_idx,
-                         refinement_idx,
-                         temperature_C=25):
-
-    model_list = [Model() for _ in range(M)]
-
-    for i in range(M):
-        model_list.append(Model())
-        model_list[i].load_state_dict(torch.load(models_name)['model_state_dicts'][i])
-        model_list[i].eval()
+def manual_eval(models_name,
+                stream: models.StreamComposition,
+                solid_removal_idx,
+                recovery_idx,
+                purification_idx,
+                refinement_idx,
+                temperature_C=25,
+                model_type='ensemble'):
 
     r = compute(
         solvent_target_name=stream.target_solvent['props'].name,
@@ -192,14 +186,27 @@ def manual_ensemble_eval(models_name,
                                                   purity=r.target_purity,
                                                   cost_per_kg=r.cost_usd_per_kg_recovered)
 
+    if model_type == 'ensemble':
+        model_list = load_ensemble(models_name)
+        return {
+            'predicted': get_ensemble_predictions(model_list,
+                                                  stream,
+                                                  temperature_C,
+                                                  [solid_removal_idx, recovery_idx, purification_idx, refinement_idx]),
+            'true': ground_truth
+        }
+    elif model_type == 'single':
+        model = models.load_model(models_name).to('cpu')
 
-    return {
-        'predicted': get_ensemble_predictions(model_list,
-                                              stream,
-                                              temperature_C,
-                                              [solid_removal_idx, recovery_idx, purification_idx, refinement_idx]),
-        'true': ground_truth
-    }
+        model_output = get_single_prediction(model, stream, temperature_C, [solid_removal_idx, recovery_idx, purification_idx, refinement_idx])
+
+        return {
+            'predicted': models.ModelDistributionOutput(feasibility=model_output.feasibility_mu,
+                                                        recovery=model_output.recovery_mu,
+                                                        purity=model_output.purity_mu,
+                                                        cost_per_kg=model_output.cost_per_kg_mu),
+            'true': ground_truth
+        }
 
 
 @torch.no_grad()
@@ -328,13 +335,18 @@ def main():
     stream = StreamComposition(target_name='2-methyltetrahydrofuran',
                                target_kgph=34,
                                solvent2_name='acetone',
-                               solvent2_kgph=34,
+                               solvent2_kgph=0,
                                salt_name='sodium bicarbonate',
-                               salt_kgph=34,
-                               water_kgph=34,
-                               solids_kgph=3)
+                               salt_kgph=0,
+                               water_kgph=0,
+                               solids_kgph=0)
 
-    print(manual_ensemble_eval('ensemble_best_150726.pt', M, stream, 2, 1, 2, 3))
+    # output = manual_eval('ensemble_best_150726.pt', stream, 0, 0, 0, 0)
+    output = manual_eval('single_20260717_090153.pt', stream, 0, 0, 0, 0, model_type='single')
+
+    print(output)
+
+    # print(print_model_output_comparison(output['predicted'], output['true']))
 
     # create_regression_calibration_plot(model, dataset, name, 'purity')
     # create_regression_calibration_plot(model, dataset, name, 'cost_per_kg')
