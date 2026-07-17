@@ -5,7 +5,6 @@ output rendered live as a matrix / heatmap.
 Assumes `model` is already loaded and in eval mode. Replace the
 `load_model()` and `predict()` internals with your actual model + I/O shape.
 """
-import math
 
 import gradio as gr
 import numpy as np
@@ -15,7 +14,7 @@ import matplotlib.pyplot as plt
 from config import PRED_METRICS
 from datasets import Dataset
 from evaluate import matrix_eval
-from models import load_model, Model
+from models import Model
 from solvent_recovery.properties import get_solvent_props, get_water_props, get_salt_props, get_solids_props, \
     get_extractant_props
 
@@ -171,37 +170,6 @@ with gr.Blocks() as demo:
 
     # Initial render
     demo.load(fn=predict, inputs=sliders, outputs=[plot1, plot2])
-
-def compare_dicts_strings(a: dict[str, str], b: dict[str, str],
-                            name_a: str = "A", name_b: str = "B") -> str:
-    keys = list(a)  # assumes same keys; use a.keys() | b.keys() if not guaranteed
-    kw = max(len(k) for k in keys)
-    cw = max(len(name_a), len(name_b), 9)  # 9 fits a formatted float
-
-    lines = [f"{'':<{kw}}  {name_a:>{cw}}  {name_b:>{cw}}"]
-    for k in keys:
-        lines.append(
-            f"{k:<{kw}}  {a[k]:>{cw}}  {b[k]:>{cw}}"
-        )
-
-    lines.append('\n')
-    return "\n".join(lines)
-
-def compare_dicts_numerical(a: dict[str, float], b: dict[str, float],
-                            name_a: str = "A", name_b: str = "B") -> str:
-    keys = list(a)  # assumes same keys; use a.keys() | b.keys() if not guaranteed
-    kw = max(len(k) for k in keys)
-    cw = max(len(name_a), len(name_b), 9)  # 9 fits a formatted float
-
-    lines = [f"{'':<{kw}}  {name_a:>{cw}}  {name_b:>{cw}}  {'Δ':>{cw}}"]
-    for k in keys:
-        d = b[k] - a[k]
-        lines.append(
-            f"{k:<{kw}}  {a[k]:>{cw}.3f}  {b[k]:>{cw}.3f}  {d:>{cw}.3f}"
-        )
-
-    lines.append('\n')
-    return "\n".join(lines)
 
 if __name__ == "__main__":
     demo.launch()

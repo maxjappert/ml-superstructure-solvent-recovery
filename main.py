@@ -9,8 +9,7 @@ from datasets import Dataset
 from evaluate import evaluate
 from models import Model, LossBreakdown
 from train import train_epoch
-from utils import plot_training
-from visualise import compare_dicts_numerical
+from utils import plot_training, compare_dicts_numerical
 
 torch.manual_seed(SEED)
 train_set = Dataset('train')

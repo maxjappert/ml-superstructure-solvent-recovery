@@ -196,6 +196,8 @@ def load_model(name):
     model.to(DEVICE)
     return model
 
+def new_ensemble(M):
+    return [Model() for _ in range(M)]
 
 def brier_score(logits, labels):
     probs = torch.sigmoid(logits).squeeze()
@@ -245,6 +247,8 @@ def get_losses(model, x, y) -> LossBreakdown:
 
 def bernoulli_entropy(p):
     return -p * torch.log(p + eps) - (1 - p) * torch.log(1 - p + eps)
+
+# def get_ensemble_predictions_from_tensor(input_tensor)
 
 def get_ensemble_predictions(ensemble: list, stream: StreamComposition, temperature_C: float, superstructure_idxs, data_name='train'):
     M = len(ensemble)

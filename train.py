@@ -11,8 +11,8 @@ import torch.nn.functional as F
 
 from datasets import Dataset
 from evaluate import evaluate
-from models import get_losses, LossBreakdown, Model
-from visualise import compare_dicts_numerical, compare_dicts_strings
+from models import get_losses, LossBreakdown, Model, new_ensemble
+from utils import compare_dicts_numerical, compare_dicts_strings
 import numpy as np
 
 torch.manual_seed(SEED)
@@ -38,27 +38,30 @@ def transfer_ensemble_losses(losses: list[LossBreakdown], normaliser: int) -> Lo
 
     return loss_breakdown
 
-def train_ensemble(train_loader, val_loader, M=5):
-    models = [Model().to(DEVICE) for _ in range(M)]
-    optimisers = [torch.optim.AdamW(model.parameters(), lr=config.LR, weight_decay=config.WEIGHT_DECAY) for model in models]
+def train_ensemble(train_loader, val_loader, M=5, num_epochs=EPOCHS, verbose=True):
+    ensemble = new_ensemble(M)
+    optimisers = [torch.optim.AdamW(model.parameters(), lr=config.LR, weight_decay=config.WEIGHT_DECAY) for model in ensemble]
 
-    checkpoint_filename = f"{M}_ensemble_{datetime.datetime.now().strftime("%Y%m%d_%H%M%S")}.pt"
+    if verbose:
+        checkpoint_filename = f"{M}_ensemble_{datetime.datetime.now().strftime("%Y%m%d_%H%M%S")}.pt"
 
     train_losses_list = []
     val_losses_list = []
 
-    print(f'started training {checkpoint_filename}')
+    if verbose:
+        print(f'started training {checkpoint_filename}')
 
     best_val = float("inf")
-    for epoch in range(EPOCHS):
-        print(f'Epoch {epoch + 1}/{EPOCHS}')
+    for epoch in range(num_epochs):
+        if verbose:
+            print(f'Epoch {epoch + 1}/{num_epochs}')
 
         epoch_losses_train = []
         epoch_losses_val = []
 
         for model_id in range(M):
-            train_losses = train_epoch(models[model_id], train_loader, optimisers[model_id])
-            val_losses = evaluate(models[model_id], val_loader)
+            train_losses = train_epoch(ensemble[model_id], train_loader, optimisers[model_id])
+            val_losses = evaluate(ensemble[model_id], val_loader)
 
             epoch_losses_train.append(train_losses)
             epoch_losses_val.append(val_losses)
@@ -68,23 +71,25 @@ def train_ensemble(train_loader, val_loader, M=5):
         epoch_losses_breakdown_val = transfer_ensemble_losses(epoch_losses_val, len(val_loader.dataset))
         val_losses_list.append(epoch_losses_breakdown_val)
 
-        print(compare_dicts_strings(epoch_losses_breakdown_train.detached_and_normalised_summary_dict(),
+        if verbose:
+            print(compare_dicts_strings(epoch_losses_breakdown_train.detached_and_normalised_summary_dict(),
                                       epoch_losses_breakdown_val.detached_and_normalised_summary_dict(),
                             'Train', 'Validation'))
 
         mean_val_loss = torch.mean(epoch_losses_breakdown_val.total).item()
 
-        if mean_val_loss < best_val:
-            print('yay new best mean!')
-            best_val = mean_val_loss
-            torch.save({'model_state_dicts': [model.state_dict() for model in models],
-                        'optimiser_state_dict': [optimiser.state_dict() for optimiser in optimisers],
-                        'epoch': epoch,
-                        'hparams': {'seed': config.SEED, 'lr': config.LR, 'bs': config.BATCH_SIZE, 'M': M},
-                        'val_loss': best_val}, checkpoint_filename,
-                       )
+        if verbose:
+            if mean_val_loss < best_val:
+                print('yay new best mean!')
+                best_val = mean_val_loss
+                torch.save({'model_state_dicts': [model.state_dict() for model in ensemble],
+                            'optimiser_state_dict': [optimiser.state_dict() for optimiser in optimisers],
+                            'epoch': epoch,
+                            'hparams': {'seed': config.SEED, 'lr': config.LR, 'bs': config.BATCH_SIZE, 'M': M},
+                            'val_loss': best_val}, checkpoint_filename,
+                           )
 
-    return train_losses_list, val_losses_list
+    return ensemble, train_losses_list, val_losses_list
 
 
 def train_single(train_loader, val_loader):

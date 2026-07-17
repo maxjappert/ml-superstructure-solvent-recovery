@@ -5,7 +5,8 @@ from fontTools.designspaceLib.statNames import StatNames
 
 class Dataset(torch.utils.data.Dataset):
     def __init__(self, dataset_type):
-        df = pd.read_csv(f'data/{dataset_type}.csv')
+        self.original_path = f'data/{dataset_type}.csv'
+        df = pd.read_csv(self.original_path)
         input_df = df[['target_kgph',
                          'solvent2_kgph',
                          'water_kgph',
@@ -52,6 +53,16 @@ class Dataset(torch.utils.data.Dataset):
 
     def __getitem__(self, idx):
         return self.X[idx], self.y[idx]
+
+    def to_file(self, appendix):
+        df = pd.read_csv(self.original_path)
+
+        df.to_csv(f'{self.original_path[0:-4]}_{appendix}.csv', index=False)
+
+    def append(self, data_new: Dataset):
+        self.X = torch.cat([self.X, data_new.X], dim=0)
+        self.y = torch.cat([self.y, data_new.y], dim=0)
+
 
 class Standardiser:
     def __init__(self, data: torch.Tensor):
