@@ -342,7 +342,7 @@ def main():
                                solids_kgph=0)
 
     output = manual_eval('ensemble_best_150726.pt', stream, 0, 0, 0, 0)
-    # output = manual_eval('single_20260717_090153.pt', stream, 0, 0, 0, 0, model_type='single')
+    # output = manual_eval('single_best_170726.pt', stream, 0, 0, 0, 0, model_type='single')
 
     print(output)
 

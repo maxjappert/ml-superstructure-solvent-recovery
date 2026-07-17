@@ -5,7 +5,7 @@ import torch
 from torch import nn, Tensor
 import torch.nn.functional as F
 
-from config import DEVICE, loss_scalar_fractions, loss_scalar_cost
+from config import DEVICE, loss_scalar_fractions, loss_scalar_cost, eps
 from datasets import Dataset
 from solvent_recovery.properties import get_solvent_props, get_salt_props, get_water_props, get_solids_props
 from solvent_recovery.units import log_alphas_pairwise
@@ -244,7 +244,7 @@ def get_losses(model, x, y) -> LossBreakdown:
     return losses
 
 def bernoulli_entropy(p):
-    return -p * torch.log(p) - (1 - p) * torch.log(1 - p)
+    return -p * torch.log(p + eps) - (1 - p) * torch.log(1 - p + eps)
 
 def get_ensemble_predictions(ensemble: list, stream: StreamComposition, temperature_C: float, superstructure_idxs, data_name='train'):
     M = len(ensemble)

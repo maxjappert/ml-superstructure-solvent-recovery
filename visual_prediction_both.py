@@ -543,7 +543,7 @@ with st.sidebar:
     st.markdown('<div class="eyebrow">Checkpoints</div>',
                 unsafe_allow_html=True)
     ensemble_name = st.text_input("Ensemble", value="ensemble_best_150726.pt")
-    single_name = st.text_input("Single model", value="single_20260717_090153.pt")
+    single_name = st.text_input("Single model", value="single_best_170726.pt")
 
 
 # ---------------------------------------------------------------- header

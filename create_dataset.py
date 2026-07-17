@@ -11,7 +11,7 @@ from solvent_recovery.properties import get_solvent_props, get_water_props, get_
 from solvent_recovery.units import _alphas, log_alphas_pairwise
 
 
-def create_dataset(type: str, size: int, seed: int):
+def create_dataset(type: str, size: int, seed: int, skip_prob=0.5):
 
     os.makedirs('data', exist_ok=True)
     with open(os.path.join('data', f'{type}.csv'), 'w') as f:
@@ -60,135 +60,154 @@ def create_dataset(type: str, size: int, seed: int):
         salts = list_salts()
         rng = random.Random(seed)
 
-        for i in range(0, size):
+        # a random starting solvent
+        solvent_iterator = rng.randint(0, num_solvents-1)
+        total_iterator = 0
+
+        while total_iterator < size:
             # latin hypercube sampling
-            solvent_target_name = solvents[i % num_solvents]
+            solvent_target_name = solvents[solvent_iterator % num_solvents]
 
-            names = {
-                'target': solvent_target_name,
-                'solvent2': rng.choice([s for s in solvents if s != solvent_target_name]),
-                'salt': rng.choice(salts)
-            }
+            for solids_removal_idx in range(4):
+                for recovery_idx in range(4):
+                    for purification_idx in range(4):
+                        for refinement_idx in range(5):
 
-            temperature_C = rng.randint(15, 60)
+                            # we don't need every single combination for every single solvent,
+                            # we just need a representative overview over the entire state space
+                            if rng.random() < skip_prob:
+                                continue
 
-            idxs = {
-                'solids_removal': rng.randint(0, 3),
-                'recovery': rng.randint(0, 3),
-                'purification': rng.randint(0, 3),
-                'refinement': rng.randint(0, 4),
-            }
+                            names = {
+                                'target': solvent_target_name,
+                                'solvent2': rng.choice([s for s in solvents if s != solvent_target_name]),
+                                'salt': rng.choice(salts)
+                            }
 
-            props = {
-                "target": get_solvent_props(names['target']),
-                "solvent2": get_solvent_props(names['solvent2']),
-                "water": get_water_props(),
-                "salt": get_salt_props(names['salt']),
-                "solids": get_solids_props(),
-                "extractant": get_extractant_props(),
-            }
+                            temperature_C = rng.randint(15, 60)
 
-            stream_kgph = {
-                "target": rng.randint(50, 2000),
-                "solvent2": rng.randint(0, 1000),
-                "water": rng.randint(0, 1500) if rng.random() < 0.8 else 0,
-                "salt": rng.randint(0, 200) if rng.random() < 0.8 else 0,
-                "solids": rng.randint(0, 100) if rng.random() < 0.8 else 0
-            }
+                            idxs = {
+                                'solids_removal': solids_removal_idx,
+                                'recovery': recovery_idx,
+                                'purification': purification_idx,
+                                'refinement': refinement_idx,
+                            }
 
-            n_components = 1
-            if stream_kgph['solvent2'] > 0:
-                n_components += 1
-            if stream_kgph['salt'] > 0:
-                n_components += 1
-            if stream_kgph['water'] > 0:
-                n_components += 1
-            if stream_kgph['solids'] > 0:
-                n_components += 1
+                            props = {
+                                "target": get_solvent_props(names['target']),
+                                "solvent2": get_solvent_props(names['solvent2']),
+                                "water": get_water_props(),
+                                "salt": get_salt_props(names['salt']),
+                                "solids": get_solids_props(),
+                                "extractant": get_extractant_props(),
+                            }
 
-            volumetric_flows = {
-                "target": stream_kgph['target'] / props['target'].rho,
-                "solvent2": stream_kgph['solvent2'] / props['solvent2'].rho,
-                "water": stream_kgph['water'] / props['water'].rho,
-                "salt": stream_kgph['salt'] / props['salt'].rho,
-                "solids": stream_kgph['solids'] / props['solids'].rho
-            }
+                            stream_kgph = {
+                                "target": rng.randint(50, 2000),
+                                "solvent2": rng.randint(0, 1000),
+                                "water": rng.randint(0, 1500) if rng.random() < 0.8 else 0,
+                                "salt": rng.randint(0, 200) if rng.random() < 0.8 else 0,
+                                "solids": rng.randint(0, 100) if rng.random() < 0.8 else 0
+                            }
 
-            fractions = {
-                "target": stream_kgph['target'] / sum(stream_kgph.values()),
-                "solvent2": stream_kgph['solvent2'] / sum(stream_kgph.values()),
-                "water": stream_kgph['water'] / sum(stream_kgph.values()),
-                "salt": stream_kgph['salt'] / sum(stream_kgph.values()),
-                "solids": stream_kgph['solids'] / sum(stream_kgph.values()),
-            }
+                            n_components = 1
+                            if stream_kgph['solvent2'] > 0:
+                                n_components += 1
+                            if stream_kgph['salt'] > 0:
+                                n_components += 1
+                            if stream_kgph['water'] > 0:
+                                n_components += 1
+                            if stream_kgph['solids'] > 0:
+                                n_components += 1
 
-            assert 0.99 < sum(fractions.values()) < 1.01
+                            volumetric_flows = {
+                                "target": stream_kgph['target'] / props['target'].rho,
+                                "solvent2": stream_kgph['solvent2'] / props['solvent2'].rho,
+                                "water": stream_kgph['water'] / props['water'].rho,
+                                "salt": stream_kgph['salt'] / props['salt'].rho,
+                                "solids": stream_kgph['solids'] / props['solids'].rho
+                            }
 
-            r = compute(
-                solvent_target_name=names['target'], solvent2_name=names['solvent2'],
-                salt_name=names['salt'],
-                temperature_C=temperature_C,
-                solvent_target_kgph=stream_kgph['target'],
-                solvent2_kgph=stream_kgph['solvent2'],
-                water_kgph=stream_kgph['water'],
-                salt_kgph=stream_kgph['salt'],
-                solids_kgph=stream_kgph['solids'],
-                idx_solids_removal=idxs['solids_removal'],
-                idx_recovery=idxs['recovery'],
-                idx_purification=idxs['purification'],
-                idx_refinement=idxs['refinement'],
-            )
+                            fractions = {
+                                "target": stream_kgph['target'] / sum(stream_kgph.values()),
+                                "solvent2": stream_kgph['solvent2'] / sum(stream_kgph.values()),
+                                "water": stream_kgph['water'] / sum(stream_kgph.values()),
+                                "salt": stream_kgph['salt'] / sum(stream_kgph.values()),
+                                "solids": stream_kgph['solids'] / sum(stream_kgph.values()),
+                            }
+
+                            assert 0.99 < sum(fractions.values()) < 1.01
+
+                            r = compute(
+                                solvent_target_name=names['target'], solvent2_name=names['solvent2'],
+                                salt_name=names['salt'],
+                                temperature_C=temperature_C,
+                                solvent_target_kgph=stream_kgph['target'],
+                                solvent2_kgph=stream_kgph['solvent2'],
+                                water_kgph=stream_kgph['water'],
+                                salt_kgph=stream_kgph['salt'],
+                                solids_kgph=stream_kgph['solids'],
+                                idx_solids_removal=idxs['solids_removal'],
+                                idx_recovery=idxs['recovery'],
+                                idx_purification=idxs['purification'],
+                                idx_refinement=idxs['refinement'],
+                            )
 
 
-            # todo bodge bodge bodge
-            if r.cost_usd_per_kg_recovered > 100:
-                print('row skipped because the cost is too high')
-                continue
+                            # todo bodge bodge bodge
+                            if r.cost_usd_per_kg_recovered > 100:
+                                print('row skipped because the cost is too high')
+                                continue
 
-            feasible = not math.isnan(r.cost_usd_per_kg_recovered)
+                            feasible = not math.isnan(r.cost_usd_per_kg_recovered)
 
-            log_alphas = log_alphas_pairwise(stream_kgph, props, temperature_C + 273.15)
+                            log_alphas = log_alphas_pairwise(stream_kgph, props, temperature_C + 273.15)
 
-            writer.writerow([names['target'],
-                             names['solvent2'],
-                             names['salt'],
-                             stream_kgph['target'],
-                             stream_kgph['solvent2'],
-                             stream_kgph['water'],
-                             stream_kgph['salt'],
-                             stream_kgph['solids'],
-                             volumetric_flows['target'],
-                             volumetric_flows['solvent2'],
-                             volumetric_flows['water'],
-                             volumetric_flows['salt'],
-                             volumetric_flows['solids'],
-                             temperature_C,
-                             props['target'].MW,
-                             props['target'].rho,
-                             props['target'].Tb, # in kelvin, we could convert
-                             props['target'].Hvap,
-                             props['target'].Cp,
-                             props['target'].logP,
-                             log_alphas['target']['solvent2'],
-                             log_alphas['target']['water'],
-                             props['solvent2'].MW,
-                             props['solvent2'].rho,
-                             props['solvent2'].Tb,
-                             props['solvent2'].Hvap,
-                             props['solvent2'].Cp,
-                             props['solvent2'].logP,
-                             idxs['solids_removal'],
-                             idxs['recovery'],
-                             idxs['purification'],
-                             idxs['refinement'],
-                             int(feasible),
-                             r.cost_usd_per_kg_recovered if feasible else 0, # NaN implies an infeasible solution, in the output we'll encode ths as -1
-                             r.cost_usd_per_year if feasible else 0,
-                             r.target_purity if feasible else 0,
-                             r.target_recovery if feasible else 0])
+                            writer.writerow([names['target'],
+                                             names['solvent2'],
+                                             names['salt'],
+                                             stream_kgph['target'],
+                                             stream_kgph['solvent2'],
+                                             stream_kgph['water'],
+                                             stream_kgph['salt'],
+                                             stream_kgph['solids'],
+                                             volumetric_flows['target'],
+                                             volumetric_flows['solvent2'],
+                                             volumetric_flows['water'],
+                                             volumetric_flows['salt'],
+                                             volumetric_flows['solids'],
+                                             temperature_C,
+                                             props['target'].MW,
+                                             props['target'].rho,
+                                             props['target'].Tb, # in kelvin, we could convert
+                                             props['target'].Hvap,
+                                             props['target'].Cp,
+                                             props['target'].logP,
+                                             log_alphas['target']['solvent2'],
+                                             log_alphas['target']['water'],
+                                             props['solvent2'].MW,
+                                             props['solvent2'].rho,
+                                             props['solvent2'].Tb,
+                                             props['solvent2'].Hvap,
+                                             props['solvent2'].Cp,
+                                             props['solvent2'].logP,
+                                             idxs['solids_removal'],
+                                             idxs['recovery'],
+                                             idxs['purification'],
+                                             idxs['refinement'],
+                                             int(feasible),
+                                             r.cost_usd_per_kg_recovered if feasible else 0, # NaN implies an infeasible solution, in the output we'll encode ths as -1
+                                             r.cost_usd_per_year if feasible else 0,
+                                             r.target_purity if feasible else 0,
+                                             r.target_recovery if feasible else 0])
 
-            if i % 500000 == 0:
-                print(f'{i}/{size}')
+                            total_iterator += 1
+
+                            if total_iterator % 500000 == 0:
+                                print(f'{total_iterator}/{size}')
+
+
+            solvent_iterator += 1
 
 def main():
     type = sys.argv[1]
