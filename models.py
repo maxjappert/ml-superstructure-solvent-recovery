@@ -23,7 +23,7 @@ class ModelOutput:
 
 @dataclass(frozen=False, slots=True)
 class ModelDistributionOutput:
-    feasibility: Union[dict, bool]
+    feasibility: Union[dict, bool, float]
     recovery: Union[dict, float]
     purity: Union[dict, float]
     cost_per_kg: Union[dict, float]

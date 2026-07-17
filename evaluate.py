@@ -171,7 +171,7 @@ def manual_eval(models_name,
         salt_name=stream.salt['props'].name,
         temperature_C=temperature_C,
         solvent_target_kgph=stream.target_solvent['kgph'],
-        solvent2_kgph=stream.target_solvent['kgph'],
+        solvent2_kgph=stream.solvent2['kgph'],
         water_kgph=stream.water['kgph'],
         salt_kgph=stream.salt['kgph'],
         solids_kgph=stream.solids['kgph'],
@@ -201,7 +201,7 @@ def manual_eval(models_name,
         model_output = get_single_prediction(model, stream, temperature_C, [solid_removal_idx, recovery_idx, purification_idx, refinement_idx])
 
         return {
-            'predicted': models.ModelDistributionOutput(feasibility=model_output.feasibility_mu,
+            'predicted': models.ModelDistributionOutput(feasibility=torch.sigmoid(model_output.feasibility_logit).item(),
                                                         recovery=model_output.recovery_mu,
                                                         purity=model_output.purity_mu,
                                                         cost_per_kg=model_output.cost_per_kg_mu),
