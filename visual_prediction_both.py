@@ -1,17 +1,16 @@
 """
-Solvent recovery superstructure — ensemble inference interface.
+Solvent recovery superstructure — inference interface.
 
 Run with:  streamlit run app.py
 
-Expects to import StreamComposition, the ensemble loader, and
-get_ensemble_predictions from the project. If those imports fail the
-stream-builder half still works, so the app is useful offline.
+Two tabs: the ensemble (distributions, uncertainty decomposition) and the
+single model (point estimates). Both are evaluated against the same ground
+truth so the two approaches can be compared on identical streams.
 """
 
 from __future__ import annotations
 
 import math
-from pathlib import Path
 
 import numpy as np
 import plotly.graph_objects as go
@@ -23,9 +22,10 @@ MODEL_AVAILABLE = True
 IMPORT_ERROR = ""
 
 try:
-    from solvent_recovery.solvents import list_solvents, list_salts, SOLVENT_DATA, SALT_DATA
+    from solvent_recovery.solvents import (list_solvents, list_salts,
+                                           SOLVENT_DATA, SALT_DATA)
 except Exception:
-    # Fallback registry — mirrors components.py so the UI runs standalone.
+    # Fallback registry so the stream builder runs standalone.
     SOLVENT_DATA = {
         "methanol": ("67-56-1", 32.04, 792, 2.53, 1100.0, 64.7, -0.77),
         "ethanol": ("64-17-5", 46.07, 789, 2.44, 841.0, 78.4, -0.31),
@@ -117,6 +117,7 @@ EPISTEMIC = "#B0662F"   # reducible — copper, this is where more data helps
 FEASIBLE = "#3D6B52"
 INFEASIBLE = "#8C3A3A"
 TRUTH = "#1B4F72"       # measured reality — the only ink that isn't a guess
+SINGLE = "#6B5B7B"      # the point model — one voice, no chorus
 
 st.markdown(
     f"""
@@ -173,17 +174,23 @@ def gaussian_curve(mu: float, sigma: float, n: int = 400):
 
 
 def as_float(v):
-    """Ground-truth fields are bare floats; None means unlabelled.
+    """Ground-truth and single-model fields are bare floats or 0-d tensors.
 
-    Kept as a function rather than inlined because a masked head legitimately
-    carries None, and every call site needs that distinction.
+    None means unlabelled — a masked head legitimately carries it, and every
+    call site needs that distinction.
     """
     if v is None:
         return None
+    if hasattr(v, "item"):
+        try:
+            v = v.item()
+        except Exception:  # noqa: BLE001
+            return None
     try:
-        return float(v)
+        f = float(v)
     except (TypeError, ValueError):
         return None
+    return None if math.isnan(f) else f
 
 
 def normal_cdf(x: float, mu: float, sigma: float) -> float:
@@ -205,8 +212,7 @@ def pit_reading(pit: float) -> tuple[str, str]:
     return "well inside the predicted range", FEASIBLE
 
 
-def distribution_figure(mu, sigma, aleatoric, epistemic, label, unit,
-                        clip01=False, truth=None):
+def distribution_figure(mu, sigma, label, unit, clip01=False, truth=None):
     """Density curve with the 90% band marked, and the truth if we have it.
 
     The band is the honest interval only if the model is calibrated — the
@@ -270,6 +276,65 @@ def distribution_figure(mu, sigma, aleatoric, epistemic, label, unit,
     return fig
 
 
+def number_line_figure(value, truth, label, unit, clip01=False):
+    """A point estimate has no width. This draws exactly that.
+
+    Same height as the density plot so the two tabs line up when flipped
+    between — the empty space is the argument.
+    """
+    marks = [m for m in (value, truth) if m is not None]
+    if not marks:
+        return None
+
+    span = max(marks) - min(marks)
+    pad = max(span * 0.6, abs(float(np.mean(marks))) * 0.15, 0.05)
+    lo, hi = min(marks) - pad, max(marks) + pad
+    if clip01:
+        lo, hi = max(lo, -0.02), min(hi, 1.02)
+
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(
+        x=[lo, hi], y=[0, 0], mode="lines",
+        line=dict(color=RULE, width=1.2), hoverinfo="skip", showlegend=False,
+    ))
+    if value is not None and truth is not None:
+        fig.add_trace(go.Scatter(
+            x=[value, truth], y=[0, 0], mode="lines",
+            line=dict(color=MIST, width=1.4, dash="dot"),
+            hoverinfo="skip", showlegend=False,
+        ))
+    if value is not None:
+        fig.add_trace(go.Scatter(
+            x=[value], y=[0], mode="markers",
+            marker=dict(color=SINGLE, size=16, symbol="line-ns",
+                        line=dict(color=SINGLE, width=2.5)),
+            hovertemplate=f"predicted: %{{x:.3f}} {unit}<extra></extra>",
+            showlegend=False,
+        ))
+    if truth is not None:
+        fig.add_trace(go.Scatter(
+            x=[truth], y=[0], mode="markers",
+            marker=dict(color=TRUTH, size=16, symbol="line-ns",
+                        line=dict(color=TRUTH, width=2.5)),
+            hovertemplate=f"true: %{{x:.3f}} {unit}<extra></extra>",
+            showlegend=False,
+        ))
+
+    fig.update_layout(
+        height=170,
+        margin=dict(l=8, r=8, t=8, b=24),
+        paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+        xaxis=dict(
+            range=[lo, hi], showgrid=False, zeroline=False, showline=True,
+            linecolor=RULE, tickfont=dict(size=10, color=MIST),
+            title=dict(text=unit, font=dict(size=9, color=MIST)),
+        ),
+        yaxis=dict(visible=False, range=[-1, 1]),
+        hoverlabel=dict(bgcolor=PAPER, font_size=11),
+    )
+    return fig
+
+
 def variance_split_bar(aleatoric: float, epistemic: float):
     """Horizontal stack: what you can't fix vs what more data would fix."""
     total = aleatoric + epistemic
@@ -303,7 +368,7 @@ def variance_split_bar(aleatoric: float, epistemic: float):
 
 
 def head_panel(col, title, unit, res, truth=None, clip01=False, fmt="{:.3f}"):
-    """One continuous head: prediction against truth, then the doubt.
+    """One continuous head from the ensemble: distribution against truth.
 
     Reading order is deliberate — the error comes first, because that is
     what you actually want to know, and the variance split comes last,
@@ -331,9 +396,12 @@ def head_panel(col, title, unit, res, truth=None, clip01=False, fmt="{:.3f}"):
                 f' &nbsp;·&nbsp; {z:+.2f}σ</span></div>',
                 unsafe_allow_html=True,
             )
+        else:
+            st.markdown('<div class="truth-line">&nbsp;</div>',
+                        unsafe_allow_html=True)
 
         st.plotly_chart(
-            distribution_figure(mu, sigma, ale, epi, title, unit,
+            distribution_figure(mu, sigma, title, unit,
                                 clip01=clip01, truth=truth),
             use_container_width=True,
             config={"displayModeBar": False},
@@ -358,6 +426,54 @@ def head_panel(col, title, unit, res, truth=None, clip01=False, fmt="{:.3f}"):
         if bar is not None:
             st.plotly_chart(bar, use_container_width=True,
                             config={"displayModeBar": False})
+
+
+def point_panel(col, title, unit, value, truth=None, clip01=False,
+                fmt="{:.3f}"):
+    """One continuous head from the single model: a number, and its error.
+
+    There is no PIT here and no variance split, because there is no
+    distribution. That absence is the finding, not an omission.
+    """
+    with col:
+        st.markdown(f'<div class="eyebrow">{title}</div>',
+                    unsafe_allow_html=True)
+
+        if value is None:
+            st.markdown(f'<div class="readout" style="color:{MIST}">—</div>',
+                        unsafe_allow_html=True)
+            st.markdown('<div class="mono-note">no output</div>',
+                        unsafe_allow_html=True)
+            return
+
+        st.markdown(
+            f'<div class="readout" style="color:{SINGLE}">'
+            f'{fmt.format(value)}</div>',
+            unsafe_allow_html=True,
+        )
+
+        if truth is not None:
+            err = value - truth
+            st.markdown(
+                f'<div class="truth-line">true {fmt.format(truth)}'
+                f'<span class="readout-unit">&nbsp;&nbsp;err {err:+.3f}'
+                f'</span></div>',
+                unsafe_allow_html=True,
+            )
+        else:
+            st.markdown('<div class="truth-line">&nbsp;</div>',
+                        unsafe_allow_html=True)
+
+        fig = number_line_figure(value, truth, title, unit, clip01)
+        if fig is not None:
+            st.plotly_chart(fig, use_container_width=True,
+                            config={"displayModeBar": False})
+
+        st.markdown(
+            '<div class="mono-note">no interval — this model reports a '
+            'number, not a belief</div>',
+            unsafe_allow_html=True,
+        )
 
 
 # ---------------------------------------------------------------- sidebar: inputs
@@ -424,7 +540,10 @@ with st.sidebar:
     ]
 
     st.markdown("<hr>", unsafe_allow_html=True)
-    models_name = st.text_input("Ensemble name", value="train")
+    st.markdown('<div class="eyebrow">Checkpoints</div>',
+                unsafe_allow_html=True)
+    ensemble_name = st.text_input("Ensemble", value="ensemble_best_150726.pt")
+    single_name = st.text_input("Single model", value="single_20260717_090153.pt")
 
 
 # ---------------------------------------------------------------- header
@@ -438,8 +557,6 @@ total_flow = target_kgph + solvent2_kgph + water_kgph + salt_kgph + solids_kgph
 if total_flow <= 0:
     st.warning("No feed. Raise at least one flow above zero.")
     st.stop()
-
-# --- composition strip: the feed, as one honest bar -----------------------
 
 components = [
     (target_name, target_kgph, INK),
@@ -491,8 +608,8 @@ if not MODEL_AVAILABLE:
     st.info(
         f"Stream builder only — the model modules did not import.\n\n"
         f"`{IMPORT_ERROR}`\n\n"
-        f"Run this from the project root so `stream` and `evaluate` are "
-        f"importable, and the prediction panel will appear here."
+        f"Run this from the project root so `models` and `evaluate` are "
+        f"importable, and the prediction panels will appear here."
     )
     st.stop()
 
@@ -514,9 +631,7 @@ stream = StreamComposition(
     solids_kgph=solids_kgph,
 )
 
-result = manual_eval(
-    'ensemble_best_150726.pt',
-    stream,
+idx = dict(
     solid_removal_idx=ss[0],
     recovery_idx=ss[1],
     purification_idx=ss[2],
@@ -524,104 +639,231 @@ result = manual_eval(
     temperature_C=temperature_C,
 )
 
-out = result["predicted"]
-truth = result.get("true")
+ens_result = None
+ens_error = ""
+try:
+    ens_result = manual_eval(ensemble_name, stream, model_type="ensemble", **idx)
+except Exception as exc:  # noqa: BLE001
+    ens_error = f"{type(exc).__name__}: {exc}"
 
-# Truth is optional at the field level — a head may be unlabelled even
-# when the rest of the point is. Resolve each one independently.
-t_feas = as_float(getattr(truth, "feasibility", None)) if truth else None
-t_recovery = as_float(getattr(truth, "recovery", None)) if truth else None
-t_purity = as_float(getattr(truth, "purity", None)) if truth else None
-t_cost = as_float(getattr(truth, "cost_per_kg", None)) if truth else None
+single_result = None
+single_error = ""
+try:
+    single_result = manual_eval(single_name, stream, model_type="single", **idx)
+except Exception as exc:  # noqa: BLE001
+    single_error = f"{type(exc).__name__}: {exc}"
+
+if ens_result is None and single_result is None:
+    st.error(
+        f"Both models failed.\n\n"
+        f"Ensemble: `{ens_error}`\n\n"
+        f"Single: `{single_error}`"
+    )
+    st.stop()
+
+# Ground truth is identical from either call — compute() does not depend on
+# the model. Take whichever succeeded.
+truth = (ens_result or single_result)["true"]
+
+t_feas = as_float(getattr(truth, "feasibility", None))
+t_recovery = as_float(getattr(truth, "recovery", None))
+t_purity = as_float(getattr(truth, "purity", None))
+t_cost = as_float(getattr(truth, "cost_per_kg", None))
+
+infeasible_in_truth = t_feas is not None and t_feas < 0.5
 
 
-# ---------------------------------------------------------------- feasibility gate
+def shown(v):
+    """Truth markers vanish on masked heads rather than inventing an error."""
+    return None if infeasible_in_truth else v
 
-p_feas = float(out.feasibility["dist"].probs)
-f_epi = float(out.feasibility["epistemic"])
-f_ale = float(out.feasibility["aleatoric"])
-f_total = f_epi + f_ale
 
-gate_col, unc_col = st.columns([1, 2])
+HEADS = [
+    ("Recovery", "fraction", "recovery", t_recovery, True, "{:.3f}"),
+    ("Purity", "fraction", "purity", t_purity, True, "{:.3f}"),
+    ("Cost", "USD/kg", "cost_per_kg", t_cost, False, "{:.2f}"),
+]
 
-with gate_col:
-    st.markdown('<div class="eyebrow">Feasibility</div>',
+
+def gate_note(pred_infeasible: bool):
+    """Same caveat in both tabs — the mask is a property of the data."""
+    if infeasible_in_truth:
+        st.markdown(
+            '<div class="subtle">This stream is infeasible in the data, so '
+            'the continuous heads were masked during training. Their outputs '
+            'below are undefined, not wrong — comparing them to a ground '
+            'truth is not meaningful here.</div>',
+            unsafe_allow_html=True,
+        )
+        st.markdown("<br>", unsafe_allow_html=True)
+    elif pred_infeasible:
+        st.markdown(
+            '<div class="subtle">The model does not expect this separation '
+            'to work. Recovery, purity, and cost are shown below but were '
+            'trained on feasible streams — read them as extrapolation, not '
+            'prediction.</div>',
+            unsafe_allow_html=True,
+        )
+        st.markdown("<br>", unsafe_allow_html=True)
+
+
+def feasibility_verdict(p, label):
+    """Shared readout for both tabs. p is a probability in [0, 1]."""
+    colour = FEASIBLE if p >= 0.5 else INFEASIBLE
+    verdict = "feasible" if p >= 0.5 else "infeasible"
+    st.markdown(f'<div class="eyebrow">Feasibility · {label}</div>',
                 unsafe_allow_html=True)
-    colour = FEASIBLE if p_feas >= 0.5 else INFEASIBLE
-    verdict = "feasible" if p_feas >= 0.5 else "infeasible"
     st.markdown(
-        f'<div class="readout" style="color:{colour}">{p_feas:.1%}'
+        f'<div class="readout" style="color:{colour}">{p:.1%}'
         f'<span class="readout-unit"> {verdict}</span></div>',
         unsafe_allow_html=True,
     )
     if t_feas is not None:
         true_label = "feasible" if t_feas >= 0.5 else "infeasible"
-        correct = (p_feas >= 0.5) == (t_feas >= 0.5)
+        correct = (p >= 0.5) == (t_feas >= 0.5)
         # Brier score for one point: squared error on the probability.
         # Rewards being right *and* being appropriately confident.
-        brier = (p_feas - t_feas) ** 2
-        mark = "correct" if correct else "wrong"
+        brier = (p - t_feas) ** 2
         mark_colour = FEASIBLE if correct else INFEASIBLE
         st.markdown(
             f'<div class="truth-line">true {true_label}'
             f'<span class="readout-unit">&nbsp;&nbsp;'
-            f'<span style="color:{mark_colour}">{mark}</span>'
+            f'<span style="color:{mark_colour}">'
+            f'{"correct" if correct else "wrong"}</span>'
             f' &nbsp;·&nbsp; Brier {brier:.3f}</span></div>',
             unsafe_allow_html=True,
         )
 
-with unc_col:
-    st.markdown('<div class="eyebrow">Where the doubt comes from</div>',
-                unsafe_allow_html=True)
-    bar = variance_split_bar(f_ale, f_epi)
-    if bar is not None:
-        st.plotly_chart(bar, use_container_width=True,
-                        config={"displayModeBar": False})
-    st.markdown(
-        f'<div class="mono-note">H = {f_total:.3f} nats &nbsp;·&nbsp; '
-        f'{(f_epi / f_total if f_total > 0 else 0):.0%} from ensemble '
-        f'disagreement</div>',
-        unsafe_allow_html=True,
-    )
 
-st.markdown("<hr>", unsafe_allow_html=True)
+tab_ens, tab_single = st.tabs(["Ensemble", "Point estimate"])
 
-infeasible_in_truth = t_feas is not None and t_feas < 0.5
-infeasible_in_pred = t_feas is None and p_feas < 0.5
 
-if infeasible_in_truth:
-    st.markdown(
-        '<div class="subtle">This stream is infeasible in the data, so the '
-        'continuous heads were masked during training. Their outputs below '
-        'are undefined, not wrong — comparing them to a ground truth is '
-        'not meaningful here.</div>',
-        unsafe_allow_html=True,
-    )
-    st.markdown("<br>", unsafe_allow_html=True)
-elif infeasible_in_pred:
-    st.markdown(
-        '<div class="subtle">The model does not expect this separation to '
-        'work. Recovery, purity, and cost are shown below but were trained '
-        'on feasible streams — read them as extrapolation, not '
-        'prediction.</div>',
-        unsafe_allow_html=True,
-    )
-    st.markdown("<br>", unsafe_allow_html=True)
+# ---------------------------------------------------------------- ensemble tab
 
-c1, c2, c3 = st.columns(3)
-head_panel(c1, "Recovery", "fraction", out.recovery,
-           truth=None if infeasible_in_truth else t_recovery, clip01=True)
-head_panel(c2, "Purity", "fraction", out.purity,
-           truth=None if infeasible_in_truth else t_purity, clip01=True)
-head_panel(c3, "Cost", "CHF/kg", out.cost_per_kg,
-           truth=None if infeasible_in_truth else t_cost, fmt="{:.2f}")
+with tab_ens:
+    if ens_result is None:
+        st.error(f"Ensemble evaluation failed.\n\n`{ens_error}`")
+    else:
+        out = ens_result["predicted"]
 
-st.markdown("<hr>", unsafe_allow_html=True)
-st.markdown(
-    '<div class="mono-note">Bands are 90% intervals under the ensemble '
-    'predictive distribution. They are only honest if the model is '
-    'calibrated. A single PIT value says where one outcome landed — it '
-    'cannot diagnose calibration, which needs the PIT distribution over a '
-    'whole test set.</div>',
-    unsafe_allow_html=True,
-)
+        p_feas = float(out.feasibility["dist"].probs)
+        f_epi = float(out.feasibility["epistemic"])
+        f_ale = float(out.feasibility["aleatoric"])
+        f_total = f_epi + f_ale
+
+        gate_col, unc_col = st.columns([1, 2])
+
+        with gate_col:
+            feasibility_verdict(p_feas, "ensemble")
+
+        with unc_col:
+            st.markdown('<div class="eyebrow">Where the doubt comes from</div>',
+                        unsafe_allow_html=True)
+            bar = variance_split_bar(f_ale, f_epi)
+            if bar is not None:
+                st.plotly_chart(bar, use_container_width=True,
+                                config={"displayModeBar": False})
+            st.markdown(
+                f'<div class="mono-note">H = {f_total:.3f} nats '
+                f'&nbsp;·&nbsp; '
+                f'{(f_epi / f_total if f_total > 0 else 0):.0%} from '
+                f'ensemble disagreement</div>',
+                unsafe_allow_html=True,
+            )
+
+        st.markdown("<hr>", unsafe_allow_html=True)
+        gate_note(p_feas < 0.5)
+
+        cols = st.columns(3)
+        for col, (title, unit, attr, t, clip, fmt) in zip(cols, HEADS):
+            head_panel(col, title, unit, getattr(out, attr),
+                       truth=shown(t), clip01=clip, fmt=fmt)
+
+        st.markdown("<hr>", unsafe_allow_html=True)
+        st.markdown(
+            '<div class="mono-note">Bands are 90% intervals under the '
+            'ensemble predictive distribution. They are only honest if the '
+            'model is calibrated. A single PIT value says where one outcome '
+            'landed — it cannot diagnose calibration, which needs the PIT '
+            'distribution over a whole test set.</div>',
+            unsafe_allow_html=True,
+        )
+
+
+# ---------------------------------------------------------------- single tab
+
+with tab_single:
+    if single_result is None:
+        st.error(f"Single-model evaluation failed.\n\n`{single_error}`")
+    else:
+        pt = single_result["predicted"]
+
+        p_feas_single = as_float(getattr(pt, "feasibility", None))
+        p_recovery = as_float(getattr(pt, "recovery", None))
+        p_purity = as_float(getattr(pt, "purity", None))
+        p_cost = as_float(getattr(pt, "cost_per_kg", None))
+
+        if p_feas_single is not None:
+            gate_col, note_col = st.columns([1, 2])
+            with gate_col:
+                feasibility_verdict(p_feas_single, "single")
+            with note_col:
+                st.markdown('<div class="eyebrow">Where the doubt comes '
+                            'from</div>', unsafe_allow_html=True)
+                st.markdown(
+                    '<div class="subtle">Nowhere it can name. One model '
+                    'cannot disagree with itself, so there is no epistemic '
+                    'term to read — only the probability, taken on '
+                    'faith.</div>',
+                    unsafe_allow_html=True,
+                )
+            st.markdown("<hr>", unsafe_allow_html=True)
+            gate_note(p_feas_single < 0.5)
+
+        point_values = {"recovery": p_recovery, "purity": p_purity,
+                        "cost_per_kg": p_cost}
+
+        cols = st.columns(3)
+        for col, (title, unit, attr, t, clip, fmt) in zip(cols, HEADS):
+            point_panel(col, title, unit, point_values[attr],
+                        truth=shown(t), clip01=clip, fmt=fmt)
+
+        st.markdown("<hr>", unsafe_allow_html=True)
+
+        # Head-to-head, but only where both models actually produced a number.
+        if ens_result is not None and not infeasible_in_truth:
+            ens_out = ens_result["predicted"]
+            rows = []
+            for title, unit, attr, t, clip, fmt in HEADS:
+                pv = point_values[attr]
+                if t is None or pv is None:
+                    continue
+                mu = float(getattr(ens_out, attr)["dist"].mean)
+                e_ens, e_pt = abs(mu - t), abs(pv - t)
+                if e_ens < e_pt:
+                    who, who_colour = "ensemble", COPPER
+                elif e_pt < e_ens:
+                    who, who_colour = "single", SINGLE
+                else:
+                    who, who_colour = "tied", MIST
+                rows.append(
+                    f'{title}: ensemble {e_ens:.3f} vs single {e_pt:.3f} '
+                    f'&nbsp;→&nbsp; <span style="color:{who_colour}">{who}'
+                    f'</span>'
+                )
+            if rows:
+                st.markdown('<div class="eyebrow">Absolute error, '
+                            'head to head</div>', unsafe_allow_html=True)
+                st.markdown(
+                    '<div class="mono-note">' + '<br>'.join(rows) + '</div>',
+                    unsafe_allow_html=True,
+                )
+                st.markdown("<br>", unsafe_allow_html=True)
+
+        st.markdown(
+            '<div class="mono-note">A point estimate carries no interval, so '
+            'there is no PIT and no calibration to check. Where the two '
+            'models have similar errors, the difference is not accuracy — it '
+            'is that only one of them told you how far to trust it.</div>',
+            unsafe_allow_html=True,
+        )
