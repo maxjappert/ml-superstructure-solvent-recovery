@@ -32,7 +32,7 @@ def load_ensemble(checkpoint_name: str) -> list[Model]:
     checkpoint = torch.load(checkpoint_name)
     M = checkpoint['hparams']['M']
 
-    model_list = [Model() for _ in range(M)]
+    model_list = []
 
     for i in range(M):
         model_list.append(Model())
