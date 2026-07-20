@@ -4,11 +4,11 @@ from threading import current_thread
 import torch
 from torch.utils.data import DataLoader, Subset
 
-from config import ACTIVE_LR, ACTIVE_WEIGHT_DECAY, ACTIVE_NUM_DATA_POOL, SEED, ACTIVE_NUM_NEW_DATA, ACTIVE_BATCH_SIZE, \
-    NUM_WORKERS, VAL_BATCH_SIZE, ACTIVE_NUM_EPOCHS, DEVICE
+from config import ACTIVE_LR, ACTIVE_WEIGHT_DECAY, ACTIVE_NUM_DATA_POOL, SEED, ACTIVE_BATCH_SIZE, \
+    NUM_WORKERS, VAL_BATCH_SIZE, ACTIVE_NUM_EPOCHS, DEVICE, ACTIVE_NEW_DATA_FRAC
 from create_dataset import create_dataset, create_dataset_parallel
 from datasets import Dataset
-from evaluate import evaluate_ensemble
+from evaluate import evaluate_ensemble_from_file
 from models import Model, get_ensemble_predictions, StreamComposition, new_ensemble, \
     get_ensemble_predictions_from_tensor
 
@@ -26,11 +26,11 @@ def get_stream(row):
                              salt_kgph=row['salt_kgph'],
                              solids_kgph=row['solids_kgph'])
 
+@torch.no_grad()
 def acquisition_function(ensemble: list, datapool_set: Dataset):
+    selected_indices = []
 
-    rows_with_corresponding_epistemic_uncertainties = []
-
-    loader = DataLoader(datapool_set, batch_size=VAL_BATCH_SIZE, num_workers=NUM_WORKERS)
+    loader = DataLoader(datapool_set, batch_size=VAL_BATCH_SIZE, num_workers=NUM_WORKERS, shuffle=False)
 
     current_idx = 0
 
@@ -41,18 +41,20 @@ def acquisition_function(ensemble: list, datapool_set: Dataset):
         total_epistemic_uncertainty = (prediction.feasibility['epistemic']
                                        + prediction.recovery['epistemic']
                                        + prediction.purity['epistemic']
-                                       + prediction.cost_per_kg['epistemic'])
+                                       + prediction.cost_per_kg['epistemic']).detach()
 
-        rows_with_corresponding_epistemic_uncertainties.extend([(data_idx, total_epistemic_uncertainty[list_dx]) for list_dx, data_idx in enumerate(range(current_idx, current_idx + X.shape[0]))])
+        top_vals, top_pos = torch.topk(total_epistemic_uncertainty, int(X.size(0)*ACTIVE_NEW_DATA_FRAC))
+
+        selected_indices.extend(list(top_pos+current_idx) )
 
         current_idx += X.shape[0]
 
-    sorted_keys = [pair[0] for pair in sorted(rows_with_corresponding_epistemic_uncertainties, key=lambda item: item[1], reverse=True)]
+    datapool_set.X = datapool_set.X[selected_indices, :]
+    datapool_set.y = datapool_set.y[selected_indices, :]
 
-    datapool_set.X = datapool_set.X[sorted_keys]
-    datapool_set.y = datapool_set.y[sorted_keys]
+    print(f'{len(selected_indices)} new data points created')
 
-    return datapool_set[:ACTIVE_NUM_NEW_DATA]
+    return datapool_set
 
 def main():
     name_input = '5_ensemble_best_170726.pt'
@@ -88,7 +90,7 @@ def main():
         data_selected = acquisition_function(ensemble, datapool_set)
         print('done')
 
-        dataset_train.append(data_selected[0], data_selected[1])
+        dataset_train.append(data_selected.X, data_selected.y)
 
         print(f'new dataset length {len(dataset_train)}')
 

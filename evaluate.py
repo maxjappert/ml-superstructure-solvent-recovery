@@ -40,6 +40,31 @@ def evaluate(model, loader, plots=False, model_name=None):
 
     return total_losses
 
+def evaluate_ensemble(ensemble, loader):
+    [model.eval() for model in ensemble]
+
+    losses_list = []
+
+    for x, y in loader:
+        x, y = x.to(DEVICE), y.to(DEVICE)
+
+        for model in ensemble:
+            losses = models.get_losses(model, x, y)
+            losses_list.append(losses)
+
+    return transfer_ensemble_losses(losses_list, len(loader.dataset))
+
+def evaluate_ensemble_from_file(ensemble_name, loader):
+    ensemble = load_ensemble(ensemble_name)
+
+    losses = []
+
+    for model in ensemble:
+        losses.append(evaluate(model, loader))
+
+    transferred_losses = transfer_ensemble_losses(losses, len(loader.dataset))
+
+    return transferred_losses.detached_distribution_dict()
 
 @torch.no_grad()
 def create_regression_calibration_plot(model: Model, dataset: Dataset, model_name: str, prediction: str, num_bins=20):
@@ -302,18 +327,6 @@ def matrix_eval(model,
         'true': ground_truths,
     }
 
-def evaluate_ensemble(ensemble_name, loader):
-    ensemble = load_ensemble(ensemble_name)
-
-    losses = []
-
-    for model in ensemble:
-        losses.append(evaluate(model, loader))
-
-    transferred_losses = transfer_ensemble_losses(losses, len(loader.dataset))
-
-    return transferred_losses.detached_distribution_dict()
-
 def main():
     # output = manual_eval('first_good.pt',
     #             '2-methyltetrahydrofuran',
@@ -351,11 +364,11 @@ def main():
 
     print(manual_eval(ensemble_name, stream, 2, 1, 0, 0, model_type='ensemble'))
     print(manual_eval(single_name, stream, 2, 1, 0, 0, model_type='single'))
-
+    evaluate
     # output = manual_eval('single_best_170726.pt', stream, 0, 0, 0, 0, model_type='single')
 
 
-    print(evaluate_ensemble(ensemble_name, test_loader))
+    print(evaluate_ensemble_from_file(ensemble_name, test_loader))
     print(evaluate(models.load_model(single_name), DataLoader(Dataset('test'), batch_size=VAL_BATCH_SIZE)).div_by(len(Dataset('test'))))
 
     ...

@@ -307,7 +307,7 @@ def transfer_ensemble_model_outputs(outputs: list[ModelOutput]):
 
     return output_transferred
 
-
+@torch.no_grad()
 def get_ensemble_predictions_from_tensor(ensemble, input_tensor):
     M = len(ensemble)
 
