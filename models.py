@@ -349,7 +349,7 @@ def get_ensemble_predictions_from_tensor(ensemble, input_tensor):
     cost_per_kg_epistemic = outputs_transferred.cost_per_kg_mu.var(dim=0)
     cost_per_kg_aleatoric = outputs_transferred.cost_per_kg_logvar.exp().mean(dim=0)
     cost_per_kg_mu = outputs_transferred.cost_per_kg_mu.mean(dim=0) # (batchsize,)
-    cost_per_kg_var = purity_epistemic + purity_aleatoric
+    cost_per_kg_var = cost_per_kg_epistemic + cost_per_kg_aleatoric
     cost_per_kg_dist = torch.distributions.Normal(cost_per_kg_mu, cost_per_kg_var.sqrt())
 
 
