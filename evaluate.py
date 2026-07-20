@@ -347,7 +347,7 @@ def main():
     ensemble_name = '5_ensemble_best_170726.pt'
     single_name = 'single_best_170726.pt'
 
-    test_loader = DataLoader(Dataset('test'))
+    test_loader = DataLoader(Dataset('test'), batch_size=VAL_BATCH_SIZE)
 
     print(manual_eval(ensemble_name, stream, 2, 1, 0, 0, model_type='ensemble'))
     print(manual_eval(single_name, stream, 2, 1, 0, 0, model_type='single'))

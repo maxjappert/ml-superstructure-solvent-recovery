@@ -1,4 +1,5 @@
 import os
+from threading import current_thread
 
 import torch
 from torch.utils.data import DataLoader, Subset
@@ -27,22 +28,27 @@ def get_stream(row):
 
 def acquisition_function(ensemble: list, datapool_set: Dataset, num_returned: int):
 
-    rows_with_corresponding_epistemic_uncertainties = dict()
+    rows_with_corresponding_epistemic_uncertainties = []
+
+    loader = DataLoader(datapool_set, batch_size=ACTIVE_BATCH_SIZE)
+
+    current_idx = 0
 
     # todo implement this with batch processing
-    for idx in range(len(datapool_set)):
+    for X, y in loader:
         # print(f'{idx+1}/{len(datapool_set)}')
-        X, y = datapool_set[idx]
-        prediction = get_ensemble_predictions_from_tensor(ensemble, X.unsqueeze(0))
+        prediction = get_ensemble_predictions_from_tensor(ensemble, X) # ModelDistributionOutput
 
         total_epistemic_uncertainty = (prediction.feasibility['epistemic']
                                        + prediction.recovery['epistemic']
                                        + prediction.purity['epistemic']
                                        + prediction.cost_per_kg['epistemic'])
 
-        rows_with_corresponding_epistemic_uncertainties[idx] = total_epistemic_uncertainty
+        rows_with_corresponding_epistemic_uncertainties.extend([(data_idx, total_epistemic_uncertainty[list_dx]) for list_dx, data_idx in enumerate(range(current_idx, current_idx + X.shape[0]))])
 
-    sorted_keys = [pair[0] for pair in sorted(rows_with_corresponding_epistemic_uncertainties.items(), key=lambda item: item, reverse=True)]
+        current_idx += X.shape[0]
+
+    sorted_keys = [pair[0] for pair in sorted(rows_with_corresponding_epistemic_uncertainties, key=lambda item: item[1], reverse=True)]
 
     datapool_set.X = datapool_set.X[sorted_keys]
     datapool_set.y = datapool_set.y[sorted_keys]
@@ -59,8 +65,8 @@ ensemble = load_ensemble(name_input)
 
 optimisers = [torch.optim.Adam(model.parameters(), lr=ACTIVE_LR, weight_decay=ACTIVE_WEIGHT_DECAY) for model in ensemble]
 
-dataset_train = Dataset('train_small')
-dataset_val = Dataset('val_small')
+dataset_train = Dataset('train')
+dataset_val = Dataset('val')
 
 loader_train = DataLoader(dataset_train, batch_size=ACTIVE_BATCH_SIZE, shuffle=True, num_workers=NUM_WORKERS)
 loader_val = DataLoader(dataset_val, batch_size=VAL_BATCH_SIZE, shuffle=True, num_workers=NUM_WORKERS)
@@ -91,7 +97,7 @@ for generation in range(1000):
 
     # throw away old weights
     ensemble, _, val_losses_list = train_ensemble(DataLoader(dataset_train, batch_size=ACTIVE_BATCH_SIZE, shuffle=True, num_workers=NUM_WORKERS),
-                   loader_val, num_epochs=ACTIVE_NUM_EPOCHS, verbose=True)
+                   loader_val, num_epochs=ACTIVE_NUM_EPOCHS, verbose=False)
 
     val_loss = min([loss.total.mean().item() for loss in val_losses_list])
     print(val_loss)
