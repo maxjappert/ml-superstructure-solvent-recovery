@@ -339,7 +339,6 @@ def get_ensemble_predictions_from_tensor(ensemble, input_tensor):
     #                    + torch.pow(outputs_transferred.recovery_mu, 2)).mean(dim=0)
     #                    - torch.pow(recovery_mu, 2)) # (batchsize,)
 
-
     purity_epistemic = outputs_transferred.purity_mu.var(dim=0)
     purity_aleatoric = outputs_transferred.purity_logvar.exp().mean(dim=0)
     purity_mu = outputs_transferred.purity_mu.mean(dim=0) # (batchsize,)

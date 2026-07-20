@@ -22,7 +22,7 @@ from solvent_recovery.properties import get_solvent_props, get_water_props, get_
 
 predicted_metric = 'cost_per_kg'
 
-model_name = '20260715_152407.pt' # 'first_good.pt'
+model_name = 'single_best2_170726.pt' # 'first_good.pt'
 solvent_target_name = 'nmp'
 solvent2_name = 'ethanol'
 salt_name = 'sodium chloride'
