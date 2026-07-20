@@ -108,6 +108,34 @@ class LossBreakdown:
     def empty(cls) -> "LossBreakdown":
         return cls(**{f.name: torch.Tensor().unsqueeze(0).to(DEVICE) for f in fields(cls)})
 
+    def add(self, losses: LossBreakdown):
+        self.total += losses.total.detach()
+        self.feasibility_bce += losses.feasibility_bce.detach()
+        self.feasibility_brier += losses.feasibility_brier.detach()
+        self.recovery_nll += losses.recovery_nll.detach()
+        self.recovery_rmse += losses.recovery_rmse.detach()
+        self.purity_nll += losses.purity_nll.detach()
+        self.purity_rmse += losses.purity_rmse.detach()
+        self.cost_per_kg_nll += losses.cost_per_kg_nll.detach()
+        self.cost_per_kg_rmse += losses.cost_per_kg_rmse.detach()
+        self.num_correct += losses.num_correct.detach()
+
+        return self
+
+    def div_by(self, denominator):
+        self.total /= denominator
+        self.feasibility_bce /= denominator
+        self.feasibility_brier /= denominator
+        self.recovery_nll /= denominator
+        self.recovery_rmse /= denominator
+        self.purity_nll /= denominator
+        self.purity_rmse /= denominator
+        self.cost_per_kg_nll /= denominator
+        self.cost_per_kg_rmse /= denominator
+        self.num_correct /= denominator
+
+        return self
+
     @classmethod
     def from_shape(cls, shape):
         return LossBreakdown(**{f.name: torch.zeros(shape).to(DEVICE) for f in fields(cls)})
@@ -121,7 +149,10 @@ class LossBreakdown:
             for f in fields(self)
         }
 
-    def detached_and_normalised_summary_dict(self):
+    def detached_distribution_dict(self):
+        '''
+        Requires the object to have been passed through the transfer_ensemble_losses(...) function in order to obtain multiple values in each field.
+        '''
         return {
             f.name: (f'{torch.mean(v).item().__round__(3)} +- {torch.std(v).item().__round__(3)}' if isinstance(v := getattr(self, f.name), Tensor) else float(v))
             for f in fields(self)
@@ -351,7 +382,7 @@ def convert_data_to_input_tensor(stream: StreamComposition, temperature_C: float
 
 
 def get_ensemble_predictions(ensemble: list, stream: StreamComposition, temperature_C: float, superstructure_idxs, data_name='train'):
-    input_tensor = convert_data_to_input_tensor(stream, temperature_C, superstructure_idxs, data_name='data_name')
+    input_tensor = convert_data_to_input_tensor(stream, temperature_C, superstructure_idxs, data_name=data_name)
 
     return get_ensemble_predictions_from_tensor(ensemble, input_tensor)
 
@@ -386,3 +417,25 @@ def get_single_prediction(model, stream: StreamComposition, temperature_C: float
     input_tensor = Dataset(data_name).standardiser_X.transform(input_tensor)
 
     return model(input_tensor)
+
+
+def transfer_ensemble_losses(losses: list[LossBreakdown], normaliser: int) -> LossBreakdown:
+    '''
+    Takes a list of LossBreakdowns, one per model, and converts into a LossBreakdown object, where all fields
+    contain the losses for each model. The respective first first axes describe the models.
+    '''
+    loss_breakdown = LossBreakdown.from_shape(len(losses))
+
+    for model_id in range(len(losses)):
+        loss_breakdown.total[model_id] = losses[model_id].total.item() / normaliser
+        loss_breakdown.feasibility_bce[model_id] = losses[model_id].feasibility_bce.item() / normaliser
+        loss_breakdown.feasibility_brier[model_id] = losses[model_id].feasibility_brier.item() / normaliser
+        loss_breakdown.recovery_nll[model_id] = losses[model_id].recovery_nll.item() / normaliser
+        loss_breakdown.recovery_rmse[model_id] = losses[model_id].recovery_rmse.item() / normaliser
+        loss_breakdown.purity_nll[model_id] = losses[model_id].purity_nll.item() / normaliser
+        loss_breakdown.purity_rmse[model_id] = losses[model_id].purity_rmse.item() / normaliser
+        loss_breakdown.cost_per_kg_nll[model_id] = losses[model_id].cost_per_kg_nll.item() / normaliser
+        loss_breakdown.cost_per_kg_rmse[model_id] = losses[model_id].cost_per_kg_rmse.item() / normaliser
+        loss_breakdown.num_correct[model_id] = losses[model_id].num_correct.item() / normaliser
+
+    return loss_breakdown

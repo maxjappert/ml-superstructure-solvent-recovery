@@ -1,42 +1,19 @@
 import datetime
 import sys
 
-import pandas as pd
 import torch
 from torch.utils.data import DataLoader
 
 import config
-from config import DEVICE, loss_scalar_fractions, loss_scalar_cost, SEED, BATCH_SIZE, NUM_WORKERS, EPOCHS
-import torch.nn.functional as F
+from config import DEVICE, SEED, BATCH_SIZE, NUM_WORKERS, EPOCHS
 
 from datasets import Dataset
 from evaluate import evaluate
-from models import get_losses, LossBreakdown, Model, new_ensemble
+from models import get_losses, LossBreakdown, Model, new_ensemble, transfer_ensemble_losses
 from utils import compare_dicts_numerical, compare_dicts_strings
-import numpy as np
 
 torch.manual_seed(SEED)
 
-def transfer_ensemble_losses(losses: list[LossBreakdown], normaliser: int) -> LossBreakdown:
-    '''
-    Takes a list of LossBreakdowns, one per model, and converts into a LossBreakdown object, where all fields
-    contain the losses for each model. The respective first first axes describe the models.
-    '''
-    loss_breakdown = LossBreakdown.from_shape(len(losses))
-
-    for model_id in range(len(losses)):
-        loss_breakdown.total[model_id] = losses[model_id].total.item() / normaliser
-        loss_breakdown.feasibility_bce[model_id] = losses[model_id].feasibility_bce.item() / normaliser
-        loss_breakdown.feasibility_brier[model_id] = losses[model_id].feasibility_brier.item() / normaliser
-        loss_breakdown.recovery_nll[model_id] = losses[model_id].recovery_nll.item() / normaliser
-        loss_breakdown.recovery_rmse[model_id] = losses[model_id].recovery_rmse.item() / normaliser
-        loss_breakdown.purity_nll[model_id] = losses[model_id].purity_nll.item() / normaliser
-        loss_breakdown.purity_rmse[model_id] = losses[model_id].purity_rmse.item() / normaliser
-        loss_breakdown.cost_per_kg_nll[model_id] = losses[model_id].cost_per_kg_nll.item() / normaliser
-        loss_breakdown.cost_per_kg_rmse[model_id] = losses[model_id].cost_per_kg_rmse.item() / normaliser
-        loss_breakdown.num_correct[model_id] = losses[model_id].num_correct.item() / normaliser
-
-    return loss_breakdown
 
 def train_ensemble(train_loader, val_loader, M=5, num_epochs=EPOCHS, verbose=True):
     ensemble = new_ensemble(M)
@@ -72,8 +49,8 @@ def train_ensemble(train_loader, val_loader, M=5, num_epochs=EPOCHS, verbose=Tru
         val_losses_list.append(epoch_losses_breakdown_val)
 
         if verbose:
-            print(compare_dicts_strings(epoch_losses_breakdown_train.detached_and_normalised_summary_dict(),
-                                      epoch_losses_breakdown_val.detached_and_normalised_summary_dict(),
+            print(compare_dicts_strings(epoch_losses_breakdown_train.detached_distribution_dict(),
+                                        epoch_losses_breakdown_val.detached_distribution_dict(),
                             'Train', 'Validation'))
 
         mean_val_loss = torch.mean(epoch_losses_breakdown_val.total).item()
@@ -146,16 +123,7 @@ def train_epoch(model, loader, optimizer,):
         losses.total.backward()
         optimizer.step()
 
-        total_losses.total += losses.total.detach()
-        total_losses.feasibility_bce += losses.feasibility_bce.detach()
-        total_losses.feasibility_brier += losses.feasibility_brier.detach()
-        total_losses.recovery_nll += losses.recovery_nll.detach()
-        total_losses.recovery_rmse += losses.recovery_rmse.detach()
-        total_losses.purity_nll += losses.purity_nll.detach()
-        total_losses.purity_rmse += losses.purity_rmse.detach()
-        total_losses.cost_per_kg_nll += losses.cost_per_kg_nll.detach()
-        total_losses.cost_per_kg_rmse += losses.cost_per_kg_rmse.detach()
-        total_losses.num_correct += losses.num_correct.detach()
+        total_losses.add(losses)
 
     return total_losses
 

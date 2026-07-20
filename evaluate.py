@@ -10,14 +10,15 @@ from torch.nn import Module
 from torch.utils.data import DataLoader
 
 import models
-from config import DEVICE, loss_scalar_fractions, loss_scalar_cost, BATCH_SIZE
+from config import DEVICE, loss_scalar_fractions, loss_scalar_cost, BATCH_SIZE, VAL_BATCH_SIZE
 from datasets import Dataset
 from models import Model, LossBreakdown, get_ensemble_predictions, StreamComposition, print_model_output_comparison, \
-    load_ensemble, ModelDistributionOutput, get_single_prediction
+    load_ensemble, ModelDistributionOutput, get_single_prediction, get_losses, transfer_ensemble_losses
 from solvent_recovery import compute
 from solvent_recovery.properties import get_solvent_props, get_water_props, get_salt_props, get_solids_props, \
     get_extractant_props
 from solvent_recovery.units import _alphas, log_alphas_pairwise
+
 
 @torch.no_grad()
 def evaluate(model, loader, plots=False, model_name=None):
@@ -30,16 +31,7 @@ def evaluate(model, loader, plots=False, model_name=None):
 
         losses = models.get_losses(model, x, y)
 
-        total_losses.total += losses.total.detach()
-        total_losses.feasibility_bce += losses.feasibility_bce.detach()
-        total_losses.feasibility_brier += losses.feasibility_brier.detach()
-        total_losses.recovery_nll += losses.recovery_nll.detach()
-        total_losses.recovery_rmse += losses.recovery_rmse.detach()
-        total_losses.purity_nll += losses.purity_nll.detach()
-        total_losses.purity_rmse += losses.purity_rmse.detach()
-        total_losses.cost_per_kg_nll += losses.cost_per_kg_nll.detach()
-        total_losses.cost_per_kg_rmse += losses.cost_per_kg_rmse.detach()
-        total_losses.num_correct += losses.num_correct.detach()
+        total_losses.add(losses)
 
     if plots:
         if model_name is None:
@@ -310,6 +302,17 @@ def matrix_eval(model,
         'true': ground_truths,
     }
 
+def evaluate_ensemble(ensemble_name, dataset_name):
+    ensemble = load_ensemble(ensemble_name)
+
+    losses = []
+
+    for model in ensemble:
+        losses.append(evaluate(model, DataLoader(Dataset(dataset_name), batch_size=VAL_BATCH_SIZE)))
+
+    transferred_losses = transfer_ensemble_losses(losses, len(Dataset(dataset_name)))
+
+    return transferred_losses.detached_distribution_dict()
 
 def main():
     # output = manual_eval('first_good.pt',
@@ -341,11 +344,19 @@ def main():
                                water_kgph=0,
                                solids_kgph=0)
 
-    output = manual_eval('ensemble_best_150726.pt', stream, 0, 0, 0, 0)
+    ensemble_name = '5_ensemble_best_170726.pt'
+    single_name = 'single_best_170726.pt'
+
+    print(manual_eval(ensemble_name, stream, 2, 1, 0, 0, model_type='ensemble'))
+    print(manual_eval(single_name, stream, 2, 1, 0, 0, model_type='single'))
+
     # output = manual_eval('single_best_170726.pt', stream, 0, 0, 0, 0, model_type='single')
 
-    print(output)
 
+    print(evaluate_ensemble(ensemble_name, 'test'))
+    print(evaluate(models.load_model(single_name), DataLoader(Dataset('test'), batch_size=VAL_BATCH_SIZE)).div_by(len(Dataset('test'))))
+
+    ...
     # print(print_model_output_comparison(output['predicted'], output['true']))
 
     # create_regression_calibration_plot(model, dataset, name, 'purity')
