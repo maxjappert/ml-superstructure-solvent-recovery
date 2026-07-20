@@ -247,6 +247,7 @@ def brier_score(logits, labels):
 
 Loss = Union[Tensor, float]
 
+
 def get_losses(model, x, y) -> LossBreakdown:
     y_hat = model(x)
 
@@ -432,7 +433,7 @@ def get_single_prediction(model, stream: StreamComposition, temperature_C: float
 def transfer_ensemble_losses(losses: list[LossBreakdown], normaliser: int) -> LossBreakdown:
     '''
     Takes a list of LossBreakdowns, one per model, and converts into a LossBreakdown object, where all fields
-    contain the losses for each model. The respective first first axes describe the models.
+    contain the losses for each model. The respective first axes describe the models.
     '''
     loss_breakdown = LossBreakdown.from_shape(len(losses))
 

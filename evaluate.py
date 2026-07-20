@@ -40,6 +40,7 @@ def evaluate(model, loader, plots=False, model_name=None):
 
     return total_losses
 
+@torch.no_grad()
 def evaluate_ensemble(ensemble, loader):
     [model.eval() for model in ensemble]
 
@@ -48,12 +49,14 @@ def evaluate_ensemble(ensemble, loader):
     for x, y in loader:
         x, y = x.to(DEVICE), y.to(DEVICE)
 
+        # todo: this is wrong! it doesn't concatenate the right way
         for model in ensemble:
             losses = models.get_losses(model, x, y)
             losses_list.append(losses)
 
-    return transfer_ensemble_losses(losses_list, len(loader.dataset))
+    return transfer_ensemble_losses(losses_list, len(loader.dataset)) #
 
+@torch.no_grad()
 def evaluate_ensemble_from_file(ensemble_name, loader):
     ensemble = load_ensemble(ensemble_name)
 

@@ -8,7 +8,7 @@ import config
 from config import DEVICE, SEED, BATCH_SIZE, NUM_WORKERS, EPOCHS
 
 from datasets import Dataset
-from evaluate import evaluate, evaluate_ensemble
+from evaluate import evaluate
 from models import get_losses, LossBreakdown, Model, new_ensemble, transfer_ensemble_losses
 from utils import compare_dicts_numerical, compare_dicts_strings
 
@@ -36,31 +36,35 @@ def train_ensemble(train_loader, val_loader, M=5, num_epochs=EPOCHS, verbose=Tru
         epoch_losses_train = []
         epoch_losses_val = []
 
-        train_losses = train_epoch_ensemble(ensemble, train_loader, optimisers)
+        for model_id in range(M):
+            train_losses = train_epoch(ensemble[model_id], train_loader, optimisers[model_id])
+            val_losses = evaluate(ensemble[model_id], val_loader)
 
-        epoch_losses_breakdown_train = transfer_ensemble_losses(train_losses, len(train_loader.dataset))
-
-        if epoch % 5 == 0:
-            val_losses = evaluate_ensemble(ensemble, val_loader)
+            epoch_losses_train.append(train_losses)
             epoch_losses_val.append(val_losses)
 
-            if verbose:
-                print(compare_dicts_strings(epoch_losses_breakdown_train.detached_distribution_dict(),
-                                            val_losses.detached_distribution_dict(),
-                                'Train', 'Validation'))
+        epoch_losses_breakdown_train = transfer_ensemble_losses(epoch_losses_train, len(train_loader.dataset))
+        train_losses_list.append(epoch_losses_train)
+        epoch_losses_breakdown_val = transfer_ensemble_losses(epoch_losses_val, len(val_loader.dataset))
+        val_losses_list.append(epoch_losses_breakdown_val)
 
-            mean_val_loss = torch.mean(val_losses.total).item()
+        if verbose:
+            print(compare_dicts_strings(epoch_losses_breakdown_train.detached_distribution_dict(),
+                                        epoch_losses_breakdown_val.detached_distribution_dict(),
+                            'Train', 'Validation'))
 
-            if verbose:
-                if mean_val_loss < best_val:
-                    print('yay new best mean!')
-                    best_val = mean_val_loss
-                    torch.save({'model_state_dicts': [model.state_dict() for model in ensemble],
-                                'optimiser_state_dict': [optimiser.state_dict() for optimiser in optimisers],
-                                'epoch': epoch,
-                                'hparams': {'seed': config.SEED, 'lr': config.LR, 'bs': config.BATCH_SIZE, 'M': M},
-                                'val_loss': best_val}, checkpoint_filename,
-                               )
+        mean_val_loss = torch.mean(epoch_losses_breakdown_val.total).item()
+
+        if verbose:
+            if mean_val_loss < best_val:
+                print('yay new best mean!')
+                best_val = mean_val_loss
+                torch.save({'model_state_dicts': [model.state_dict() for model in ensemble],
+                            'optimiser_state_dict': [optimiser.state_dict() for optimiser in optimisers],
+                            'epoch': epoch,
+                            'hparams': {'seed': config.SEED, 'lr': config.LR, 'bs': config.BATCH_SIZE, 'M': M},
+                            'val_loss': best_val}, checkpoint_filename,
+                           )
 
     return ensemble, train_losses_list, val_losses_list
 
@@ -101,27 +105,6 @@ def train_single(train_loader, val_loader):
         train_losses_list.append(train_losses.detached_and_normalised(len(train_loader.dataset)))
         val_losses_list.append(val_losses.detached_and_normalised(len(val_loader.dataset)))
 
-def train_epoch_ensemble(ensemble, loader, optimisers):
-
-    [model.train() for model in ensemble]
-    losses_list = []
-
-    for x, y in loader:
-        x, y = x.to(DEVICE), y.to(DEVICE)
-        for idx in range(len(ensemble)):
-            optimisers[idx].zero_grad()
-            losses = get_losses(ensemble[idx], x, y)
-
-            # todo a bodge but keeps outliers at bay (wherever they might come from)
-            if losses.cost_per_kg_nll > 1000:
-                continue
-
-            losses.total.backward()
-            optimisers[idx].step()
-
-            losses_list.append(losses)
-
-    return losses_list
 
 def train_epoch(model, loader, optimizer,):
     model.train()
