@@ -182,7 +182,7 @@ def create_dataset(type: str, size: int, seed: int, skip_prob=0.5,
 
                         # todo bodge bodge bodge
                         if r.cost_usd_per_kg_recovered > 100:
-                            print('row skipped because the cost is too high')
+                            # print('row skipped because the cost is too high')
                             continue
 
                         feasible = not math.isnan(r.cost_usd_per_kg_recovered)

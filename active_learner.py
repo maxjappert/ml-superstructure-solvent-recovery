@@ -26,11 +26,11 @@ def get_stream(row):
                              salt_kgph=row['salt_kgph'],
                              solids_kgph=row['solids_kgph'])
 
-def acquisition_function(ensemble: list, datapool_set: Dataset, num_returned: int):
+def acquisition_function(ensemble: list, datapool_set: Dataset):
 
     rows_with_corresponding_epistemic_uncertainties = []
 
-    loader = DataLoader(datapool_set, batch_size=ACTIVE_BATCH_SIZE)
+    loader = DataLoader(datapool_set, batch_size=VAL_BATCH_SIZE, num_workers=NUM_WORKERS)
 
     current_idx = 0
 
@@ -57,18 +57,11 @@ def acquisition_function(ensemble: list, datapool_set: Dataset, num_returned: in
 def main():
     name_input = '5_ensemble_best_170726.pt'
 
-    loaded = torch.load(name_input)
-
-    M = loaded['hparams']['M']
-
     ensemble = load_ensemble(name_input)
-
-    optimisers = [torch.optim.Adam(model.parameters(), lr=ACTIVE_LR, weight_decay=ACTIVE_WEIGHT_DECAY) for model in ensemble]
 
     dataset_train = Dataset('train')
     dataset_val = Dataset('val')
 
-    loader_train = DataLoader(dataset_train, batch_size=ACTIVE_BATCH_SIZE, shuffle=True, num_workers=NUM_WORKERS)
     loader_val = DataLoader(dataset_val, batch_size=VAL_BATCH_SIZE, shuffle=True, num_workers=NUM_WORKERS)
 
     name_output = name_input + '_post'
@@ -80,29 +73,33 @@ def main():
     # print(evaluate_ensemble(name_input, loader_val))
 
     for generation in range(1000):
+        print(f'generation {generation+1}')
 
         datapool_name = f'temp_datapool'
 
+        print('starting data pool generation')
         # dataframe = create_dataset(datapool_name, ACTIVE_NUM_DATA_POOL, SEED, return_df=True, save_to_file=False)
         dataframe = create_dataset_parallel(datapool_name, ACTIVE_NUM_DATA_POOL, SEED, return_df=True, save_to_file=False)
-
         # generate new data
         datapool_set = Dataset(datapool_name, df=dataframe)
 
-        data_selected = acquisition_function(ensemble, datapool_set, ACTIVE_NUM_NEW_DATA)
+        print('done')
+        print('starting acquisition function')
+        data_selected = acquisition_function(ensemble, datapool_set)
+        print('done')
 
-        # os.remove(os.path.join('data', datapool_name+'.csv'))
+        dataset_train.append(data_selected[0], data_selected[1])
 
-        dataset_train.append(data_selected)
+        print(f'new dataset length {len(dataset_train)}')
 
-        print(len(dataset_train))
-
+        print('starting training')
         # throw away old weightss
         ensemble, _, val_losses_list = train_ensemble(DataLoader(dataset_train, batch_size=ACTIVE_BATCH_SIZE, shuffle=True, num_workers=NUM_WORKERS),
                        loader_val, num_epochs=ACTIVE_NUM_EPOCHS, verbose=True)
+        print('done')
 
         val_loss = min([loss.total.mean().item() for loss in val_losses_list])
-        print(val_loss)
+        print(f'best val loss {val_loss}')
 
 if __name__ == '__main__':
     main()

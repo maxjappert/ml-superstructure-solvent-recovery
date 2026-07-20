@@ -63,9 +63,10 @@ class Dataset(torch.utils.data.Dataset):
 
         df.to_csv(f'{self.original_path[0:-4]}_{appendix}.csv', index=False)
 
-    def append(self, data_new: Dataset):
-        self.X = torch.cat([self.X, data_new.X], dim=0)
-        self.y = torch.cat([self.y, data_new.y], dim=0)
+    def append(self, X, y):
+        assert X.shape[0] == y.shape[0]
+        self.X = torch.cat([self.X, X], dim=0)
+        self.y = torch.cat([self.y, y], dim=0)
 
 
 class Standardiser:
