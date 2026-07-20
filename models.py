@@ -215,11 +215,11 @@ class Model(nn.Module):
 
         return ModelOutput(feasibility_logit=y_hat_feasibility.squeeze(),
                            recovery_mu=y_hat_fractions[:,0],
-                           recovery_logvar=y_hat_fractions[:,1],
+                           recovery_logvar=torch.clamp(y_hat_fractions[:,1], min=-10, max=10),
                            purity_mu=y_hat_fractions[:,2],
-                           purity_logvar=y_hat_fractions[:,3],
+                           purity_logvar=torch.clamp(y_hat_fractions[:,3], min=-10, max=10),
                            cost_per_kg_mu=y_hat_cost[:,0],
-                           cost_per_kg_logvar=y_hat_cost[:,1])
+                           cost_per_kg_logvar=torch.clamp(y_hat_cost[:,1], min=-10, max=10))
 
 
 def load_model(name):
@@ -258,6 +258,9 @@ def get_losses(model, x, y) -> LossBreakdown:
     cost_per_kg_rmse = torch.sqrt(F.mse_loss(y_hat.cost_per_kg_mu[feasible_mask], y[feasible_mask, 3]))
 
     loss_total = feasibility_bce + recovery_nll + purity_nll + cost_per_kg_nll  # + loss_cost_per_year
+
+    if loss_total == float('inf'):
+        ...
 
     preds = (torch.sigmoid(y_hat.feasibility_logit) > 0.5)
     num_correct = (preds == y[:, 0]).sum()

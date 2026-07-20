@@ -7,6 +7,7 @@ from config import ACTIVE_LR, ACTIVE_WEIGHT_DECAY, ACTIVE_NUM_DATA_POOL, SEED, A
     NUM_WORKERS, VAL_BATCH_SIZE, ACTIVE_NUM_EPOCHS, DEVICE
 from create_dataset import create_dataset
 from datasets import Dataset
+from evaluate import evaluate_ensemble
 from models import Model, get_ensemble_predictions, StreamComposition, new_ensemble, \
     get_ensemble_predictions_from_tensor
 
@@ -48,7 +49,7 @@ def acquisition_function(ensemble: list, datapool_set: Dataset, num_returned: in
 
     return datapool_set
 
-name_input = '5_ensemble_20260715_141341.pt'
+name_input = '5_ensemble_best_170726.pt'
 
 loaded = torch.load(name_input)
 
@@ -60,11 +61,17 @@ optimisers = [torch.optim.Adam(model.parameters(), lr=ACTIVE_LR, weight_decay=AC
 
 dataset_train = Dataset('train_small')
 dataset_val = Dataset('val_small')
-val_loader = DataLoader(dataset_val, batch_size=VAL_BATCH_SIZE, num_workers=NUM_WORKERS)
+
+loader_train = DataLoader(dataset_train, batch_size=ACTIVE_BATCH_SIZE, shuffle=True, num_workers=NUM_WORKERS)
+loader_val = DataLoader(dataset_val, batch_size=VAL_BATCH_SIZE, shuffle=True, num_workers=NUM_WORKERS)
 
 name_output = name_input + '_post'
 
 best_val_loss = float('inf')
+
+# print('Pre-active learning evaluation')
+
+# print(evaluate_ensemble(name_input, loader_val))
 
 for generation in range(1000):
 
@@ -84,7 +91,7 @@ for generation in range(1000):
 
     # throw away old weights
     ensemble, _, val_losses_list = train_ensemble(DataLoader(dataset_train, batch_size=ACTIVE_BATCH_SIZE, shuffle=True, num_workers=NUM_WORKERS),
-                   val_loader, num_epochs=ACTIVE_NUM_EPOCHS, verbose=True)
+                   loader_val, num_epochs=ACTIVE_NUM_EPOCHS, verbose=True)
 
     val_loss = min([loss.total.mean().item() for loss in val_losses_list])
     print(val_loss)

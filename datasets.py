@@ -5,6 +5,7 @@ from fontTools.designspaceLib.statNames import StatNames
 
 class Dataset(torch.utils.data.Dataset):
     def __init__(self, dataset_type):
+        self.name = dataset_type
         self.original_path = f'data/{dataset_type}.csv'
         df = pd.read_csv(self.original_path)
         input_df = df[['target_kgph',

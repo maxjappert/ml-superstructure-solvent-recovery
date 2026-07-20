@@ -302,15 +302,15 @@ def matrix_eval(model,
         'true': ground_truths,
     }
 
-def evaluate_ensemble(ensemble_name, dataset_name):
+def evaluate_ensemble(ensemble_name, loader):
     ensemble = load_ensemble(ensemble_name)
 
     losses = []
 
     for model in ensemble:
-        losses.append(evaluate(model, DataLoader(Dataset(dataset_name), batch_size=VAL_BATCH_SIZE)))
+        losses.append(evaluate(model, loader))
 
-    transferred_losses = transfer_ensemble_losses(losses, len(Dataset(dataset_name)))
+    transferred_losses = transfer_ensemble_losses(losses, len(loader.dataset))
 
     return transferred_losses.detached_distribution_dict()
 
@@ -347,13 +347,15 @@ def main():
     ensemble_name = '5_ensemble_best_170726.pt'
     single_name = 'single_best_170726.pt'
 
+    test_loader = DataLoader(Dataset('test'))
+
     print(manual_eval(ensemble_name, stream, 2, 1, 0, 0, model_type='ensemble'))
     print(manual_eval(single_name, stream, 2, 1, 0, 0, model_type='single'))
 
     # output = manual_eval('single_best_170726.pt', stream, 0, 0, 0, 0, model_type='single')
 
 
-    print(evaluate_ensemble(ensemble_name, 'test'))
+    print(evaluate_ensemble(ensemble_name, test_loader))
     print(evaluate(models.load_model(single_name), DataLoader(Dataset('test'), batch_size=VAL_BATCH_SIZE)).div_by(len(Dataset('test'))))
 
     ...
