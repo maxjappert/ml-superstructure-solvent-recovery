@@ -251,42 +251,54 @@ Loss = Union[Tensor, float]
 def get_losses(model, x, y) -> LossBreakdown:
     y_hat = model(x)
 
-    feasibility_bce = F.binary_cross_entropy_with_logits(y_hat.feasibility_logit, y[:, 0].squeeze())
-    feasibility_brier = brier_score(y_hat.feasibility_logit, y[:, 0].squeeze())
+    target_feas = y[:, 0]
+    feasibility_bce = F.binary_cross_entropy_with_logits(y_hat.feasibility_logit, target_feas)
+    feasibility_brier = brier_score(y_hat.feasibility_logit, target_feas)
 
-    feasible_mask = y[:, 0] == 1
+    # Static-shape feasibility gating: compute per-sample losses over the FULL
+    # batch, then zero out infeasible samples and divide by the feasible count.
+    # Mathematically identical to boolean indexing + reduction='mean', but the
+    # shapes no longer depend on the data, so vmap/compile can trace it.
+    mask = (target_feas == 1).float()
+    n_feasible = mask.sum().clamp(min=1)  # also avoids NaN on all-infeasible batches
 
-    recovery_nll = loss_scalar_fractions * F.gaussian_nll_loss(y_hat.recovery_mu[feasible_mask], y[feasible_mask, 1].squeeze(),
-                                                                y_hat.recovery_logvar[feasible_mask].exp(), reduction='mean')
-    recovery_rmse = torch.sqrt(F.mse_loss(y_hat.recovery_mu[feasible_mask], y[feasible_mask, 1].squeeze()))
+    def masked_nll(mu, logvar, target):
+        # 0.5 * (log σ² + (y − μ)²/σ²), identical to F.gaussian_nll_loss(full=False)
+        nll = 0.5 * (logvar + (target - mu).pow(2) * torch.exp(-logvar))
+        return (nll * mask).sum() / n_feasible
+    
+    def masked_rmse(mu, target):
+        se = (mu - target) ** 2
+        return torch.sqrt((se * mask).sum() / n_feasible)
 
-    purity_nll = loss_scalar_fractions * F.gaussian_nll_loss(y_hat.purity_mu[feasible_mask], y[feasible_mask, 2], y_hat.purity_logvar[feasible_mask].exp(),
-                                                              reduction='mean')
-    purity_rmse = torch.sqrt(F.mse_loss(y_hat.purity_mu[feasible_mask], y[feasible_mask, 2]))
+    recovery_nll = loss_scalar_fractions * masked_nll(y_hat.recovery_mu, y_hat.recovery_logvar, y[:, 1])
+    recovery_rmse = masked_rmse(y_hat.recovery_mu, y[:, 1])
 
-    cost_per_kg_nll = loss_scalar_cost * F.gaussian_nll_loss(y_hat.cost_per_kg_mu[feasible_mask], y[feasible_mask, 3],
-                                                              y_hat.cost_per_kg_logvar[feasible_mask].exp(), reduction='mean')
-    cost_per_kg_rmse = torch.sqrt(F.mse_loss(y_hat.cost_per_kg_mu[feasible_mask], y[feasible_mask, 3]))
+    purity_nll = loss_scalar_fractions * masked_nll(y_hat.purity_mu, y_hat.purity_logvar, y[:, 2])
+    purity_rmse = masked_rmse(y_hat.purity_mu, y[:, 2])
+
+    cost_per_kg_nll = loss_scalar_cost * masked_nll(y_hat.cost_per_kg_mu, y_hat.cost_per_kg_logvar, y[:, 3])
+    cost_per_kg_rmse = masked_rmse(y_hat.cost_per_kg_mu, y[:, 3])
 
     loss_total = feasibility_bce + recovery_nll + purity_nll + cost_per_kg_nll  # + loss_cost_per_year
 
-    preds = (torch.sigmoid(y_hat.feasibility_logit) > 0.5)
-    num_correct = (preds == y[:, 0]).sum()
+    preds = torch.sigmoid(y_hat.feasibility_logit) > 0.5
+    num_correct = (preds == target_feas).sum()
 
-    losses = LossBreakdown(
-        total=loss_total * len(x),
-        feasibility_bce=feasibility_bce * len(x),
-        feasibility_brier=feasibility_brier * len(x),
+    n = x.shape[0]
+    return LossBreakdown(
+        total=loss_total * n,
+        feasibility_bce=feasibility_bce * n,
+        feasibility_brier=feasibility_brier * n,
         num_correct=num_correct,
-        recovery_nll=recovery_nll * len(x),
-        recovery_rmse=recovery_rmse * len(x),
-        purity_nll=purity_nll * len(x),
-        purity_rmse=purity_rmse * len(x),
-        cost_per_kg_nll=cost_per_kg_nll * len(x),
-        cost_per_kg_rmse=cost_per_kg_rmse * len(x),
+        recovery_nll=recovery_nll * n,
+        recovery_rmse=recovery_rmse * n,
+        purity_nll=purity_nll * n,
+        purity_rmse=purity_rmse * n,
+        cost_per_kg_nll=cost_per_kg_nll * n,
+        cost_per_kg_rmse=cost_per_kg_rmse * n,
     )
 
-    return losses
 
 def bernoulli_entropy(p):
     return -p * torch.log(p + eps) - (1 - p) * torch.log(1 - p + eps)
