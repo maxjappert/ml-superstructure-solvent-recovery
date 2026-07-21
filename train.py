@@ -142,17 +142,18 @@ def train_ensemble(train_loader, val_loader, M=5, num_epochs=EPOCHS,
         # NB: checkpointing used to live inside `if verbose:`, so silent runs
         # never saved anything. Moved out.
         if mean_val_loss < best_val:
+            best_val = mean_val_loss
+            best_ensemble = ensemble
             if verbose:
                 print('yay new best mean!')
-            best_val = mean_val_loss
-            torch.save({'model_state_dicts': [m.state_dict() for m in ensemble],
-                        'optimiser_state_dict': optimiser.state_dict(),
-                        'epoch': epoch,
-                        'hparams': {'seed': config.SEED, 'lr': config.LR,
-                                    'bs': config.BATCH_SIZE, 'M': M},
-                        'val_loss': best_val}, checkpoint_filename)
+                torch.save({'model_state_dicts': [m.state_dict() for m in ensemble],
+                            'optimiser_state_dict': optimiser.state_dict(),
+                            'epoch': epoch,
+                            'hparams': {'seed': config.SEED, 'lr': config.LR,
+                                        'bs': config.BATCH_SIZE, 'M': M},
+                            'val_loss': best_val}, checkpoint_filename)
 
-    return ensemble, train_losses_list, val_losses_list
+    return best_ensemble, train_losses_list, val_losses_list
 
 
 # --- single model -------------------------------------------------------------

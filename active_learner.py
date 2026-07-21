@@ -1,3 +1,4 @@
+import json
 import os
 from threading import current_thread
 
@@ -8,7 +9,7 @@ from config import ACTIVE_LR, ACTIVE_WEIGHT_DECAY, ACTIVE_NUM_DATA_POOL, SEED, A
     NUM_WORKERS, VAL_BATCH_SIZE, ACTIVE_NUM_EPOCHS, DEVICE, ACTIVE_NEW_DATA_FRAC
 from create_dataset import create_dataset, create_dataset_parallel
 from datasets import Dataset
-from evaluate import evaluate_ensemble_from_file
+from evaluate import evaluate_ensemble_from_file, evaluate
 from models import Model, get_ensemble_predictions, StreamComposition, new_ensemble, \
     get_ensemble_predictions_from_tensor
 
@@ -72,9 +73,11 @@ def main():
 
     print(f'active learning for {name_output} starting')
 
-    # print('Pre-active learning evaluation')
-
-    # print(evaluate_ensemble(name_input, loader_val))
+    print('Pre-active learning evaluation')
+    val_losses = []
+    val_loss_og = evaluate_ensemble_from_file(name_input, loader_val)
+    val_losses.append(val_loss_og.total.mean().item())
+    print(val_loss_og)
 
     for generation in range(1000):
         print(f'generation {generation+1}')
@@ -97,7 +100,7 @@ def main():
         print(f'new dataset length {len(dataset_train)}')
 
         print('starting training')
-        # throw away old weightss
+        # throw away old weights
         ensemble, _, val_losses_list = train_ensemble(DataLoader(dataset_train, batch_size=ACTIVE_BATCH_SIZE, shuffle=True, num_workers=NUM_WORKERS),
                        loader_val, num_epochs=ACTIVE_NUM_EPOCHS, verbose=True)
         print('done')
@@ -108,10 +111,13 @@ def main():
             torch.save({'model_state_dicts': [model.state_dict() for model in ensemble]}, name_output+'.pt')
             best_val_loss = val_loss
 
-        print(f'val loss {val_loss}')
+        print(f'val losses {val_losses_list} with best val loss {val_loss}')
+        val_losses.append(val_loss)
 
         if generation % 10 == 0:
             torch.save(dataset_train, os.path.join('data', f'{name_output}_data_{generation+1}.pt'))
+            with open("active_learning_val_losses.json", "w") as f:
+                json.dump(val_losses, f)
 
 if __name__ == '__main__':
     main()

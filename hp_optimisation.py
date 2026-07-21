@@ -14,10 +14,10 @@ from train import train_ensemble
 def main(filename):
     candidates = dict()
 
-    candidates['batch_size'] = [128, 256, 512, 1024, 2048, 4096, 8192]
-    candidates['learning_rate'] = [1e-5, 1e-4, 1e-3, 1e-2, 1e-1]
-    candidates['weight_decay'] =  [1e-5, 1e-4, 1e-3, 1e-2, 1e-1]
-    candidates['dropout_rate'] =  [0, 0.1, 0.2, 0.3, 0.4, 0.5]
+    candidates['batch_size'] = [16, 32, 64, 128, 256, 512, 1024]
+    candidates['learning_rate'] = [1e-4, 3e-4, 6e-4, 1e-3, 1e-2]
+    candidates['weight_decay'] =  [0, 1e-5, 1e-4, 1e-3, 1e-2, 1e-1]
+    candidates['dropout_rate'] =  [0]
 
     dataset_train = Dataset('train')
     dataset_val = Dataset('val')
@@ -55,7 +55,7 @@ def main(filename):
             json.dump(results, f)
 
         print(f'Size {len(results)}')
-        print(results)
+        print(trial)
 
 
 
