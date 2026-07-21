@@ -70,6 +70,8 @@ def main():
 
     best_val_loss = float('inf')
 
+    print(f'active learning for {name_output} starting')
+
     # print('Pre-active learning evaluation')
 
     # print(evaluate_ensemble(name_input, loader_val))
@@ -101,7 +103,15 @@ def main():
         print('done')
 
         val_loss = min([loss.total.mean().item() for loss in val_losses_list])
-        print(f'best val loss {val_loss}')
+
+        if val_loss < best_val_loss:
+            torch.save({'model_state_dicts': [model.state_dict() for model in ensemble]}, name_output+'.pt')
+            best_val_loss = val_loss
+
+        print(f'val loss {val_loss}')
+
+        if generation % 10 == 0:
+            torch.save(dataset_train, os.path.join('data', f'{name_output}_data_{generation+1}.pt'))
 
 if __name__ == '__main__':
     main()
