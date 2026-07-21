@@ -52,8 +52,10 @@ def _load_stacked_into_ensemble(ensemble, params, buffers):
             model.load_state_dict({name: stacked[i] for name, stacked in merged.items()})
 
 
-def train_ensemble(train_loader, val_loader, M=5, num_epochs=EPOCHS, verbose=True):
-    ensemble = new_ensemble(M)
+def train_ensemble(train_loader, val_loader, M=5, num_epochs=EPOCHS,
+                   verbose=True, lr=config.LR, dropout_rate=config.DROPOUT_RATE,
+                   weight_decay=config.WEIGHT_DECAY):
+    ensemble = new_ensemble(M, dropout_rate=dropout_rate)
 
     # Architecture template on the meta device (holds no real weights).
     base_model = copy.deepcopy(ensemble[0]).to('meta')
@@ -64,7 +66,7 @@ def train_ensemble(train_loader, val_loader, M=5, num_epochs=EPOCHS, verbose=Tru
     # One optimiser over the stacked (M, ...) parameter tensors. Each model's
     # slice still gets its own independent AdamW statistics, because Adam's
     # moment estimates are elementwise.
-    optimiser = torch.optim.AdamW(params.values(), lr=config.LR,
+    optimiser = torch.optim.AdamW(params.values(), lr=lr,
                                   weight_decay=config.WEIGHT_DECAY)
 
     def per_model_loss_dict(p, b, x, y):
@@ -80,7 +82,7 @@ def train_ensemble(train_loader, val_loader, M=5, num_epochs=EPOCHS, verbose=Tru
     vmapped_losses = torch.vmap(per_model_loss_dict, in_dims=(0, 0, None, None),
                                 randomness='different')
     if USE_COMPILE:
-        vmapped_losses = torch.compile(vmapped_losses)
+        vmapped_losses = torch.compile(vmapped_losses, dynamic=False)
 
     checkpoint_filename = f"{M}_ensemble_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.pt"
     if verbose:

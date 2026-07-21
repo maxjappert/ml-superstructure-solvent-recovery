@@ -8,6 +8,7 @@ WEIGHT_DECAY = 1e-4
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else 'cpu')
 NUM_WORKERS = 20
 VAL_BATCH_SIZE = 262144
+DROPOUT_RATE = 0.2
 
 ACTIVE_LR = 3e-4
 ACTIVE_WEIGHT_DECAY = 1e-4

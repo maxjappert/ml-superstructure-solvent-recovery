@@ -5,6 +5,7 @@ import torch
 from torch import nn, Tensor
 import torch.nn.functional as F
 
+import config
 from config import DEVICE, loss_scalar_fractions, loss_scalar_cost, eps
 from datasets import Dataset
 from solvent_recovery.properties import get_solvent_props, get_salt_props, get_water_props, get_solids_props
@@ -176,10 +177,8 @@ class LossBreakdown:
 
 
 class Model(nn.Module):
-    def __init__(self):
+    def __init__(self, dropout_rate=0.2):
         super().__init__()
-
-        dropout_rate = 0.2
 
         self.net_shared = nn.Sequential(nn.Linear(24, 128),
                                  nn.ReLU(),
@@ -238,8 +237,8 @@ def load_model(name):
     model.to(DEVICE)
     return model
 
-def new_ensemble(M):
-    return [Model().to(DEVICE) for _ in range(M)]
+def new_ensemble(M, dropout_rate=config.DROPOUT_RATE):
+    return [Model(dropout_rate=dropout_rate).to(DEVICE) for _ in range(M)]
 
 def brier_score(logits, labels):
     probs = torch.sigmoid(logits).squeeze()
