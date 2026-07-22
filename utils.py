@@ -1,6 +1,8 @@
 import matplotlib.pyplot as plt
 import torch
 
+from config import eps
+
 
 def plot_training(train_losses, val_losses):
     plt.plot(train_losses, label="train")
@@ -44,3 +46,6 @@ def compare_dicts_strings(a: dict[str, str], b: dict[str, str],
 
     lines.append('\n')
     return "\n".join(lines)
+
+def z_score(tensor: torch.Tensor) -> torch.Tensor:
+    return (tensor - tensor.mean()) / (tensor.std() + eps)

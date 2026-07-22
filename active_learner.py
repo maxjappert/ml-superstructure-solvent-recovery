@@ -15,6 +15,7 @@ from models import Model, get_ensemble_predictions, StreamComposition, new_ensem
 
 from models import load_ensemble
 from train import train_ensemble
+from utils import z_score
 
 
 def get_stream(row):
@@ -39,10 +40,10 @@ def acquisition_function(ensemble: list, datapool_set: Dataset):
         # print(f'{idx+1}/{len(datapool_set)}')
         prediction = get_ensemble_predictions_from_tensor(ensemble, X) # ModelDistributionOutput
 
-        total_epistemic_uncertainty = (prediction.feasibility['epistemic']
-                                       + prediction.recovery['epistemic']
-                                       + prediction.purity['epistemic']
-                                       + prediction.cost_per_kg['epistemic']).detach()
+        total_epistemic_uncertainty = (z_score(prediction.feasibility['epistemic'])
+                                       + z_score(prediction.recovery['epistemic'])
+                                       + z_score(prediction.purity['epistemic'])
+                                       + z_score(prediction.cost_per_kg['epistemic'])).detach()
 
         top_vals, top_pos = torch.topk(total_epistemic_uncertainty, int(X.size(0)*ACTIVE_NEW_DATA_FRAC))
 
@@ -58,7 +59,7 @@ def acquisition_function(ensemble: list, datapool_set: Dataset):
     return datapool_set
 
 def main():
-    name_input = '5_ensemble_best_170726.pt'
+    name_input = '5_ensemble_best_220726.pt'
 
     ensemble = load_ensemble(name_input)
 
@@ -111,13 +112,12 @@ def main():
             torch.save({'model_state_dicts': [model.state_dict() for model in ensemble]}, name_output+'.pt')
             best_val_loss = val_loss
 
-        print(f'val losses {val_losses_list} with best val loss {val_loss}')
+        print(f'epoch best val loss {val_loss}')
         val_losses.append(val_loss)
 
-        if generation % 10 == 0:
-            torch.save(dataset_train, os.path.join('data', f'{name_output}_data_{generation+1}.pt'))
-            with open("active_learning_val_losses.json", "w") as f:
-                json.dump(val_losses, f)
+        torch.save(data_selected, os.path.join('data', f'{name_output}_data_{generation+1}.pt'))
+        with open("active_learning_val_losses.json", "w") as f:
+            json.dump(val_losses, f)
 
 if __name__ == '__main__':
     main()

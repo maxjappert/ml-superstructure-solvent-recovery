@@ -321,8 +321,6 @@ def transfer_ensemble_model_outputs(outputs: list[ModelOutput]):
 
 @torch.no_grad()
 def get_ensemble_predictions_from_tensor(ensemble, input_tensor):
-    M = len(ensemble)
-
     raw_outputs = []
 
     for model in ensemble:
@@ -330,7 +328,6 @@ def get_ensemble_predictions_from_tensor(ensemble, input_tensor):
         raw_outputs.append(model(input_tensor.to(DEVICE)))
 
     outputs_transferred = transfer_ensemble_model_outputs(raw_outputs)
-
 
     # output = ModelDistributionOutput.initialise_dicts()
 

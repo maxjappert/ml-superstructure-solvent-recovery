@@ -230,7 +230,7 @@ def create_dataset(type: str, size: int, seed: int, skip_prob=0.5,
 
                         total_iterator += 1
 
-                        if total_iterator % 500000 == 0:
+                        if total_iterator % 500000 == 0 and save_to_file:
                             print(f'{total_iterator}/{size}')
 
         solvent_iterator += 1
