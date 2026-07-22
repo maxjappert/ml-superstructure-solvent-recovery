@@ -67,7 +67,7 @@ def train_ensemble(train_loader, val_loader, M=5, num_epochs=EPOCHS,
     # slice still gets its own independent AdamW statistics, because Adam's
     # moment estimates are elementwise.
     optimiser = torch.optim.AdamW(params.values(), lr=lr,
-                                  weight_decay=config.WEIGHT_DECAY)
+                                  weight_decay=weight_decay)
 
     def per_model_loss_dict(p, b, x, y):
         # NOTE: get_losses must only *call* the model, i.e. treat its first

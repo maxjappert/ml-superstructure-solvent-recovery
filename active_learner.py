@@ -6,7 +6,7 @@ import torch
 from torch.utils.data import DataLoader, Subset
 
 from config import ACTIVE_LR, ACTIVE_WEIGHT_DECAY, ACTIVE_NUM_DATA_POOL, SEED, \
-    NUM_WORKERS, VAL_BATCH_SIZE, ACTIVE_NUM_EPOCHS, DEVICE, ACTIVE_NEW_DATA_FRAC, BATCH_SIZE
+    NUM_WORKERS, VAL_BATCH_SIZE, ACTIVE_NUM_EPOCHS, DEVICE, ACTIVE_NEW_DATA_FRAC, BATCH_SIZE, ACTIVE_BATCH_SIZE
 from create_dataset import create_dataset, create_dataset_parallel
 from datasets import Dataset
 from evaluate import evaluate_ensemble_from_file, evaluate
@@ -30,11 +30,9 @@ def get_stream(row):
 
 @torch.no_grad()
 def acquisition_function(ensemble: list, datapool_set: Dataset):
-    selected_indices = []
-
     loader = DataLoader(datapool_set, batch_size=VAL_BATCH_SIZE, num_workers=NUM_WORKERS, shuffle=False)
 
-    current_idx = 0
+    total_epistemic_uncertainties = []
 
     for X, y in loader:
         # print(f'{idx+1}/{len(datapool_set)}')
@@ -45,16 +43,14 @@ def acquisition_function(ensemble: list, datapool_set: Dataset):
                                        + z_score(prediction.purity['epistemic'])
                                        + z_score(prediction.cost_per_kg['epistemic'])).detach()
 
-        top_vals, top_pos = torch.topk(total_epistemic_uncertainty, int(X.size(0)*ACTIVE_NEW_DATA_FRAC))
+        total_epistemic_uncertainties.extend(list(total_epistemic_uncertainty))
 
-        selected_indices.extend(list(top_pos+current_idx) )
+    top_vals, top_pos = torch.topk(torch.Tensor(total_epistemic_uncertainties), int(ACTIVE_NUM_DATA_POOL * ACTIVE_NEW_DATA_FRAC))
 
-        current_idx += X.shape[0]
+    datapool_set.X = datapool_set.X[list(top_pos), :]
+    datapool_set.y = datapool_set.y[list(top_pos), :]
 
-    datapool_set.X = datapool_set.X[selected_indices, :]
-    datapool_set.y = datapool_set.y[selected_indices, :]
-
-    print(f'{len(selected_indices)} new data points created')
+    print(f'{len(top_vals)} new data points created')
 
     return datapool_set
 
@@ -102,8 +98,8 @@ def main():
 
         print('starting training')
         # throw away old weights
-        ensemble, _, val_losses_list = train_ensemble(DataLoader(dataset_train, batch_size=BATCH_SIZE, shuffle=True, num_workers=NUM_WORKERS),
-                       loader_val, num_epochs=ACTIVE_NUM_EPOCHS, verbose=False)
+        ensemble, _, val_losses_list = train_ensemble(DataLoader(dataset_train, batch_size=ACTIVE_BATCH_SIZE, shuffle=True, num_workers=NUM_WORKERS),
+                       loader_val, num_epochs=ACTIVE_NUM_EPOCHS, weight_decay=ACTIVE_WEIGHT_DECAY, lr=ACTIVE_LR, verbose=False)
         print('done')
 
         val_loss = min([loss.total.mean().item() for loss in val_losses_list])
