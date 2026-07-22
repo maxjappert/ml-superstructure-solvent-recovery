@@ -92,6 +92,17 @@ def train_ensemble(train_loader, val_loader, M=5, num_epochs=EPOCHS,
     val_losses_list = []
     best_val = float("inf")
 
+    warmup_epochs = config.WARMUP_EPOCHS
+    scheduler = torch.optim.lr_scheduler.SequentialLR(
+        optimiser,
+        schedulers=[
+            torch.optim.lr_scheduler.LinearLR(optimiser, start_factor=0.01, total_iters=warmup_epochs),
+            torch.optim.lr_scheduler.CosineAnnealingLR(optimiser, T_max=EPOCHS - warmup_epochs,
+                                                       eta_min=config.LR * 0.01),
+        ],
+        milestones=[warmup_epochs],
+    )
+
     for epoch in range(num_epochs):
         if verbose:
             print(f'Epoch {epoch + 1}/{num_epochs}')
@@ -152,6 +163,8 @@ def train_ensemble(train_loader, val_loader, M=5, num_epochs=EPOCHS,
                             'hparams': {'seed': config.SEED, 'lr': config.LR,
                                         'bs': config.BATCH_SIZE, 'M': M},
                             'val_loss': best_val}, checkpoint_filename)
+
+        scheduler.step()
 
     return best_ensemble, train_losses_list, val_losses_list
 

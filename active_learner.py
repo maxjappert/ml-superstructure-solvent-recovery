@@ -5,8 +5,8 @@ from threading import current_thread
 import torch
 from torch.utils.data import DataLoader, Subset
 
-from config import ACTIVE_LR, ACTIVE_WEIGHT_DECAY, ACTIVE_NUM_DATA_POOL, SEED, ACTIVE_BATCH_SIZE, \
-    NUM_WORKERS, VAL_BATCH_SIZE, ACTIVE_NUM_EPOCHS, DEVICE, ACTIVE_NEW_DATA_FRAC
+from config import ACTIVE_LR, ACTIVE_WEIGHT_DECAY, ACTIVE_NUM_DATA_POOL, SEED, \
+    NUM_WORKERS, VAL_BATCH_SIZE, ACTIVE_NUM_EPOCHS, DEVICE, ACTIVE_NEW_DATA_FRAC, BATCH_SIZE
 from create_dataset import create_dataset, create_dataset_parallel
 from datasets import Dataset
 from evaluate import evaluate_ensemble_from_file, evaluate
@@ -76,7 +76,7 @@ def main():
     print('Pre-active learning evaluation')
     val_losses = []
     val_loss_og = evaluate_ensemble_from_file(name_input, loader_val)
-    val_losses.append(val_loss_og.total.mean().item())
+    # val_losses.append(val_loss_og.total.mean().item())
     print(val_loss_og)
 
     for generation in range(1000):
@@ -86,7 +86,7 @@ def main():
 
         print('starting data pool generation')
         # dataframe = create_dataset(datapool_name, ACTIVE_NUM_DATA_POOL, SEED, return_df=True, save_to_file=False)
-        dataframe = create_dataset_parallel(datapool_name, ACTIVE_NUM_DATA_POOL, SEED, return_df=True, save_to_file=False)
+        dataframe = create_dataset_parallel(datapool_name, ACTIVE_NUM_DATA_POOL, SEED + generation, return_df=True, save_to_file=False)
         # generate new data
         datapool_set = Dataset(datapool_name, df=dataframe)
 
@@ -101,8 +101,8 @@ def main():
 
         print('starting training')
         # throw away old weights
-        ensemble, _, val_losses_list = train_ensemble(DataLoader(dataset_train, batch_size=ACTIVE_BATCH_SIZE, shuffle=True, num_workers=NUM_WORKERS),
-                       loader_val, num_epochs=ACTIVE_NUM_EPOCHS, verbose=True)
+        ensemble, _, val_losses_list = train_ensemble(DataLoader(dataset_train, batch_size=BATCH_SIZE, shuffle=True, num_workers=NUM_WORKERS),
+                       loader_val, num_epochs=ACTIVE_NUM_EPOCHS, verbose=False)
         print('done')
 
         val_loss = min([loss.total.mean().item() for loss in val_losses_list])
