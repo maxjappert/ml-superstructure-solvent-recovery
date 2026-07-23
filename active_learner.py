@@ -33,6 +33,7 @@ def acquisition_function(ensemble: list, datapool_set: Dataset):
     loader = DataLoader(datapool_set, batch_size=VAL_BATCH_SIZE, num_workers=NUM_WORKERS, shuffle=False)
 
     total_epistemic_uncertainties = []
+    total_aleatoric_uncertainties = []
 
     for X, y in loader:
         # print(f'{idx+1}/{len(datapool_set)}')
@@ -43,9 +44,20 @@ def acquisition_function(ensemble: list, datapool_set: Dataset):
                                        + z_score(prediction.purity['epistemic'])
                                        + z_score(prediction.cost_per_kg['epistemic'])).detach()
 
-        total_epistemic_uncertainties.extend(list(total_epistemic_uncertainty))
+        total_aleatoric_uncertainty =(z_score(prediction.feasibility['aleatoric'])
+                                       + z_score(prediction.recovery['aleatoric'])
+                                       + z_score(prediction.purity['aleatoric'])
+                                       + z_score(prediction.cost_per_kg['aleatoric'])).detach()
 
-    top_vals, top_pos = torch.topk(torch.Tensor(total_epistemic_uncertainties), int(ACTIVE_NUM_DATA_POOL * ACTIVE_NEW_DATA_FRAC))
+        total_epistemic_uncertainties.extend(list(total_epistemic_uncertainty))
+        total_aleatoric_uncertainties.extend(list(total_aleatoric_uncertainty))
+
+    total_epistemic_uncertainties = torch.Tensor(total_epistemic_uncertainties)
+    total_aleatoric_uncertainties = torch.Tensor(total_aleatoric_uncertainties)
+
+    top_vals, top_pos = torch.topk(total_epistemic_uncertainties, int(ACTIVE_NUM_DATA_POOL * ACTIVE_NEW_DATA_FRAC))
+
+    print(f'Selected epistemic uncertainty for this generation: {top_vals.mean().item():4f} +- {top_vals.std().item():4f}')
 
     datapool_set.X = datapool_set.X[list(top_pos), :]
     datapool_set.y = datapool_set.y[list(top_pos), :]
@@ -55,7 +67,7 @@ def acquisition_function(ensemble: list, datapool_set: Dataset):
     return datapool_set
 
 def main():
-    name_input = '5_ensemble_best_220726.pt'
+    name_input = '5_ensemble_best_230726_2.pt'
 
     ensemble = load_ensemble(name_input)
 
@@ -102,14 +114,18 @@ def main():
                        loader_val, num_epochs=ACTIVE_NUM_EPOCHS, weight_decay=ACTIVE_WEIGHT_DECAY, lr=ACTIVE_LR, verbose=False)
         print('done')
 
-        val_loss = min([loss.total.mean().item() for loss in val_losses_list])
+        sorted_val_losses = sorted(val_losses_list, key=lambda x: x.total.mean().item())
+        generation_best_val_loss = sorted_val_losses[0].total.mean().item()
 
-        if val_loss < best_val_loss:
+        print(sorted_val_losses[0].detached_distribution_dict())
+
+        if generation_best_val_loss < best_val_loss:
             torch.save({'model_state_dicts': [model.state_dict() for model in ensemble]}, name_output+'.pt')
-            best_val_loss = val_loss
+            best_val_loss = generation_best_val_loss
+            print(f'{name_output} saved!')
 
-        print(f'epoch best val loss {val_loss}')
-        val_losses.append(val_loss)
+        print(f'epoch best val loss {generation_best_val_loss}')
+        val_losses.append(generation_best_val_loss)
 
         torch.save(data_selected, os.path.join('data', f'{name_output}_data_{generation+1}.pt'))
         with open("active_learning_val_losses.json", "w") as f:

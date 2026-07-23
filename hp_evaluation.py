@@ -7,7 +7,7 @@ from matplotlib import pyplot as plt
 
 hps = dict()
 
-for i in range(1, 18):
+for i in range(1, 5):
     with open(f'hp_optimisation{i}.json') as f:
         hps = hps | json.load(f)
 

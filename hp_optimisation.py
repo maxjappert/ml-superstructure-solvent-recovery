@@ -14,9 +14,9 @@ from train import train_ensemble
 def main(filename):
     candidates = dict()
 
-    candidates['batch_size'] = [16, 32, 64, 128, 256, 512, 1024]
-    candidates['learning_rate'] = [1e-4, 3e-4, 6e-4, 1e-3, 1e-2]
-    candidates['weight_decay'] =  [0, 1e-5, 1e-4, 1e-3, 1e-2, 1e-1]
+    candidates['batch_size'] = [16, 32, 64, 128, 256, 512, 1024, 2048, 4096]
+    candidates['learning_rate'] = [1e-5, 1e-4, 1e-3, 1e-2, 1e-1, 1]
+    candidates['weight_decay'] =  [0, 1e-5, 1e-4, 1e-3, 1e-2, 1e-1, 1]
     candidates['dropout_rate'] =  [0]
 
     dataset_train = Dataset('train')
@@ -43,7 +43,7 @@ def main(filename):
         ensemble, train_losses, val_losses = train_ensemble(loader_train,
                                                             loader_val,
                                                             M=5,
-                                                            num_epochs=5,
+                                                            num_epochs=20,
                                                             verbose=False,
                                                             lr=learning_rate,
                                                             weight_decay=weight_decay,

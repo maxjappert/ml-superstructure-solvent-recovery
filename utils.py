@@ -48,4 +48,5 @@ def compare_dicts_strings(a: dict[str, str], b: dict[str, str],
     return "\n".join(lines)
 
 def z_score(tensor: torch.Tensor) -> torch.Tensor:
-    return (tensor - tensor.mean()) / (tensor.std() + eps)
+    t = tensor.float()
+    return ((t - t.mean()) / t.std().clamp_min(eps)).to(tensor.dtype)
