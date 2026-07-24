@@ -169,7 +169,7 @@ class LossBreakdown:
         Requires the object to have been passed through the transfer_ensemble_losses(...) function in order to obtain multiple values in each field.
         '''
         return {
-            f.name: (f'{torch.mean(v).item().__round__(3)} +- {torch.std(v).item().__round__(3)}' if isinstance(v := getattr(self, f.name), Tensor) else float(v))
+            f.name: (f'{torch.mean(v).item().__round__(3)} +- {torch.std(v, correction=0).item().__round__(3)}' if isinstance(v := getattr(self, f.name), Tensor) else float(v))
             for f in fields(self)
         }
 

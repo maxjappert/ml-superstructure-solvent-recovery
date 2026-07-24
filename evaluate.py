@@ -304,30 +304,35 @@ def matrix_eval(model,
     }
 
 def main():
-    create_calibration_plot_binary_classification('5_ensemble_best_230726.pt_post_best.pt', Dataset('test'))
-    create_regression_calibration_plot('5_ensemble_best_230726.pt_post_best.pt', Dataset('test'), sys.argv[1])
+    ensemble_name = '5_ensemble_best_230726_3.pt_post.pt'
 
-    stream = StreamComposition(target_name='2-methyltetrahydrofuran',
-                               target_kgph=34,
-                               solvent2_name='acetone',
-                               solvent2_kgph=0,
-                               salt_name='sodium bicarbonate',
-                               salt_kgph=0,
-                               water_kgph=0,
-                               solids_kgph=0)
+    # create_calibration_plot_binary_classification('5_ensemble_best_230726.pt_post_best.pt', Dataset('test'))
+    # create_regression_calibration_plot('5_ensemble_best_230726.pt_post_best.pt', Dataset('test'), sys.argv[1])
 
-    ensemble_name = '5_ensemble_best_170726.pt'
-    single_name = 'single_best_170726.pt'
-
+    # stream = StreamComposition(target_name='2-methyltetrahydrofuran',
+    #                            target_kgph=34,
+    #                            solvent2_name='acetone',
+    #                            solvent2_kgph=0,
+    #                            salt_name='sodium bicarbonate',
+    #                            salt_kgph=0,
+    #                            water_kgph=0,
+    #                            solids_kgph=0)
+    #
+    # ensemble_name = '5_ensemble_best_170726.pt'
+    # single_name = 'single_best_170726.pt'
+    #
     test_loader = DataLoader(Dataset('test'), batch_size=VAL_BATCH_SIZE)
-
-    print(manual_eval(ensemble_name, stream, 2, 1, 0, 0, model_type='ensemble'))
-    print(manual_eval(single_name, stream, 2, 1, 0, 0, model_type='single'))
+    #
+    # print(manual_eval(ensemble_name, stream, 2, 1, 0, 0, model_type='ensemble'))
+    # print(manual_eval(single_name, stream, 2, 1, 0, 0, model_type='single'))
     # output = manual_eval('single_best_170726.pt', stream, 0, 0, 0, 0, model_type='single')
 
 
-    print(evaluate_ensemble_from_file(ensemble_name, test_loader))
-    print(evaluate(models.load_model(single_name), DataLoader(Dataset('test'), batch_size=VAL_BATCH_SIZE)).div_by(len(Dataset('test'))))
+    print(evaluate_ensemble_from_file('5_ensemble_best_230726_4.pt_post.pt', test_loader))
+    print(evaluate_ensemble_from_file('5_ensemble_best_230726_2.pt_post.pt', test_loader))
+    print(evaluate_ensemble_from_file('5_ensemble_best_230726.pt', test_loader))
+    print(evaluate_ensemble_from_file('5_ensemble_best_220726.pt', test_loader))
+    # print(evaluate(models.load_model(single_name), DataLoader(Dataset('test'), batch_size=VAL_BATCH_SIZE)).div_by(len(Dataset('test'))))
 
 if __name__ == '__main__':
     main()

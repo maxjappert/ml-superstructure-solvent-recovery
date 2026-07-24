@@ -16,6 +16,8 @@ import numpy as np
 import plotly.graph_objects as go
 import streamlit as st
 
+from config import FLAGSHIP_MODEL_NAME
+
 # ---------------------------------------------------------------- project imports
 
 MODEL_AVAILABLE = True
@@ -542,7 +544,7 @@ with st.sidebar:
     st.markdown("<hr>", unsafe_allow_html=True)
     st.markdown('<div class="eyebrow">Checkpoints</div>',
                 unsafe_allow_html=True)
-    ensemble_name = st.text_input("Ensemble", value="5_ensemble_best_170726.pt")
+    ensemble_name = st.text_input("Ensemble", value=FLAGSHIP_MODEL_NAME)
     single_name = st.text_input("Single model", value="single_best_170726.pt")
 
 

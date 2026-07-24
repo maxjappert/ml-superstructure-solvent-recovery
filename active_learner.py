@@ -1,12 +1,14 @@
 import json
 import os
+import sys
 from threading import current_thread
 
 import torch
 from torch.utils.data import DataLoader, Subset
 
 from config import ACTIVE_LR, ACTIVE_WEIGHT_DECAY, ACTIVE_NUM_DATA_POOL, SEED, \
-    NUM_WORKERS, VAL_BATCH_SIZE, ACTIVE_NUM_EPOCHS, DEVICE, ACTIVE_NEW_DATA_FRAC, BATCH_SIZE, ACTIVE_BATCH_SIZE
+    NUM_WORKERS, VAL_BATCH_SIZE, ACTIVE_NUM_EPOCHS, DEVICE, ACTIVE_NEW_DATA_FRAC, BATCH_SIZE, ACTIVE_BATCH_SIZE, \
+    ACTIVE_EPSILON_EXPLORATION
 from create_dataset import create_dataset, create_dataset_parallel
 from datasets import Dataset
 from evaluate import evaluate_ensemble_from_file, evaluate
@@ -29,7 +31,7 @@ def get_stream(row):
                              solids_kgph=row['solids_kgph'])
 
 @torch.no_grad()
-def acquisition_function(ensemble: list, datapool_set: Dataset, len_dataset:int):
+def acquisition_function(ensemble: list, datapool_set: Dataset, len_train_set:int):
     loader = DataLoader(datapool_set, batch_size=VAL_BATCH_SIZE, num_workers=NUM_WORKERS, shuffle=False)
 
     total_epistemic_uncertainties = []
@@ -55,19 +57,28 @@ def acquisition_function(ensemble: list, datapool_set: Dataset, len_dataset:int)
     total_epistemic_uncertainties = torch.Tensor(total_epistemic_uncertainties)
     total_aleatoric_uncertainties = torch.Tensor(total_aleatoric_uncertainties)
 
-    top_vals, top_pos = torch.topk(total_epistemic_uncertainties, int(len_dataset * ACTIVE_NEW_DATA_FRAC))
 
-    print(f'Selected epistemic uncertainty for this generation: {top_vals.mean().item():4f} +- {top_vals.std().item():4f}')
+    n_new_data = int(len_train_set * ACTIVE_NEW_DATA_FRAC)
+    top_epist_vals, top_epist_pos = torch.topk(total_epistemic_uncertainties, int(n_new_data * ACTIVE_EPSILON_EXPLORATION))
 
-    datapool_set.X = datapool_set.X[list(top_pos), :]
-    datapool_set.y = datapool_set.y[list(top_pos), :]
+    print(f'Selected epistemic uncertainty for this generation: {top_epist_vals.mean().item():4f} +- {top_epist_vals.std(correction=0).item():4f}')
 
-    print(f'{len(top_vals)} new data points created')
+    top_epist_X = datapool_set.X[list(top_epist_pos), :]
+    top_epist_y = datapool_set.y[list(top_epist_pos), :]
+
+    random_idxs = torch.randint(0, len(datapool_set) - 1, [int(n_new_data * (1.0 - ACTIVE_EPSILON_EXPLORATION)), ])
+    random_X = datapool_set.X[random_idxs]
+    random_y = datapool_set.y[random_idxs]
+
+    datapool_set.X = torch.cat((top_epist_X, random_X), dim=0)
+    datapool_set.y = torch.cat((top_epist_y, random_y), dim=0)
+
+    print(f'{len(top_epist_vals)} new data points created')
 
     return datapool_set
 
 def main():
-    name_input = '5_ensemble_best_230726_2.pt'
+    name_input = '5_ensemble_best_230726_4.pt'
 
     ensemble = load_ensemble(name_input)
 
@@ -85,8 +96,10 @@ def main():
     print('Pre-active learning evaluation')
     val_losses = []
     val_loss_og = evaluate_ensemble_from_file(name_input, loader_val)
-    # val_losses.append(val_loss_og.total.mean().item())
     print(val_loss_og)
+
+    ensemble_old = ensemble
+    dataset_train_old = dataset_train
 
     for generation in range(1000):
         print(f'generation {generation+1}')
@@ -119,15 +132,26 @@ def main():
 
         print(sorted_val_losses[0].detached_distribution_dict())
 
+        if generation_best_val_loss > 5:
+            print('Loss too high, model has diverged')
+            sys.exit(-1)
+
         if generation_best_val_loss < best_val_loss:
             torch.save({'model_state_dicts': [model.state_dict() for model in ensemble]}, name_output+'.pt')
             best_val_loss = generation_best_val_loss
             print(f'{name_output} saved!')
+            ensemble_old = ensemble
+            dataset_train_old = dataset_train
+            torch.save(data_selected, os.path.join('data', f'{name_output}_data_{generation + 1}.pt'))
+        else:
+            print('reverting to previous state as no improvement has been recognised')
+            ensemble = ensemble_old
+            dataset_train = dataset_train_old
+
 
         print(f'epoch best val loss {generation_best_val_loss}')
         val_losses.append(generation_best_val_loss)
 
-        torch.save(data_selected, os.path.join('data', f'{name_output}_data_{generation+1}.pt'))
         with open("active_learning_val_losses.json", "w") as f:
             json.dump(val_losses, f)
 
