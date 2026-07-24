@@ -1,6 +1,7 @@
 import math
 import os
 import random
+import sys
 
 import numpy as np
 import torch
@@ -54,32 +55,14 @@ def evaluate_ensemble_from_file(ensemble_name, loader):
     return transferred_losses.detached_distribution_dict()
 
 @torch.no_grad()
-def create_regression_calibration_plot(model: Model, dataset: Dataset, model_name: str, prediction: str, num_bins=20):
-    model.eval().to(DEVICE)
-
-    # todo re-build for ensemble model
+def create_regression_calibration_plot(ensemble_name, dataset: Dataset, output_type, num_bins=20):
+    ensemble = load_ensemble(ensemble_name)
 
     x, y = dataset.X.to(DEVICE), dataset.y.to(DEVICE)
 
-    y_hat = model(x)
+    y_hat = models.get_ensemble_predictions_from_tensor(ensemble, x)
 
     x, y = x.cpu(), y.cpu()
-
-    if prediction == 'recovery':
-        mu = y_hat.recovery_mu.cpu()
-        var = y_hat.recovery_logvar.exp().cpu()
-        pred_idx = 1
-    elif prediction == 'purity':
-        mu = y_hat.purity_mu.cpu()
-        var = y_hat.purity_logvar.exp().cpu()
-        pred_idx = 2
-    elif prediction == 'cost_per_kg':
-        mu = y_hat.cost_per_kg_mu.cpu()
-        var = y_hat.cost_per_kg_logvar.exp().cpu()
-        pred_idx = 3
-    else:
-        print('incorrect prediction specified')
-        return
 
     p = np.linspace(0.01, 0.99, num_bins)
     p_hat = []
@@ -88,19 +71,27 @@ def create_regression_calibration_plot(model: Model, dataset: Dataset, model_nam
         # The z-value from the equations for confidence intervals
         z = torch.distributions.Normal(0., 1.).icdf(torch.tensor(level))
         # Equation 3 from Kuleshov et al (2018)
-        p_hat.append((y[:,pred_idx] <= (mu + z * torch.sqrt(var))).float().mean())
+        if output_type == 'recovery':
+            p_hat.append((y[:,1] <= (y_hat.recovery['dist'].mean.cpu() + z * y_hat.recovery['dist'].stddev.cpu())).float().mean())
+        elif output_type == 'purity':
+            p_hat.append((y[:,2] <= (y_hat.purity['dist'].mean.cpu() + z * y_hat.purity['dist'].stddev.cpu())).float().mean())
+        elif output_type == 'cost_per_kg':
+            p_hat.append((y[:,3] <= (y_hat.cost_per_kg['dist'].mean.cpu() + z * y_hat.cost_per_kg['dist'].stddev.cpu())).float().mean())
 
+
+    os.makedirs(os.path.join('plots', ensemble_name), exist_ok=True)
     plt.figure(figsize=(5, 5))
     plt.plot([0, 1], [0, 1], 'k--', label='perfect')  # dotted diagonal
     plt.scatter(p, p_hat, s=20, alpha=0.7, label='model')
     plt.xlabel('Nominal probability $p$')
     plt.ylabel('Observed probability $\\hat{p}$')
+    plt.title(f'{output_type} calibration')
     plt.xlim(0, 1)
     plt.ylim(0, 1)
     plt.grid(alpha=0.3)
     plt.legend()
     plt.tight_layout()
-    plt.savefig(os.path.join('plots', model_name, f'{prediction}_calibration'), dpi=150)
+    plt.savefig(os.path.join('plots', ensemble_name, f'{output_type}_calibration'), dpi=150)
     plt.close()
 
 
@@ -112,23 +103,24 @@ def create_regression_calibration_plot(model: Model, dataset: Dataset, model_nam
 
 
 @torch.no_grad()
-def create_calibration_plot_binary_classification(model, dataset, model_name, n_bins=40):
-    model.eval().to(DEVICE)
-
+def create_calibration_plot_binary_classification(ensemble_name, dataset, n_bins=40):
     x, y = dataset.X.to(DEVICE), dataset.y.to(DEVICE)
 
-    y_hat = model(x)
-
+    y_hat = models.get_ensemble_predictions_from_tensor(load_ensemble(ensemble_name), x)
+    probs = y_hat.feasibility['dist'].probs.detach().cpu()
     x, y = x.cpu(), y.cpu()
-
-    probs = torch.sigmoid(y_hat.feasibility_logit).detach().cpu()
 
     bins_y = []
     bins_y_hat = []
     bins_mean_predicted = []
     boundaries = np.linspace(0, 1, n_bins+1)
 
+    print(len(probs))
+
+    empirical_fraction_of_positives = []
+
     for i in range(n_bins):
+        print(i)
         bins_y.append([])
         bins_y_hat.append([])
         for j in range(len(probs)):
@@ -136,27 +128,24 @@ def create_calibration_plot_binary_classification(model, dataset, model_name, n_
                 bins_y[i].append( y[j,0].item())
                 bins_y_hat[i].append(probs[j])
 
-
-    empirical_fraction_of_positives = []
-
-    for i in range(n_bins):
         bins_mean_predicted.append(np.mean(bins_y_hat[i]))
         empirical_fraction_of_positives.append(np.array(bins_y[i]).sum() / len(bins_y[i]))
 
     os.makedirs('plots', exist_ok=True)  # no error if it already exists
-    os.makedirs(os.path.join('plots', model_name), exist_ok=True)
+    os.makedirs(os.path.join('plots', ensemble_name), exist_ok=True)
 
     plt.figure(figsize=(5, 5))
     plt.plot([0, 1], [0, 1], 'k--', label='perfect')  # dotted diagonal
     plt.scatter(bins_mean_predicted, empirical_fraction_of_positives, s=20, alpha=0.7, label='model')
-    plt.xlabel('mean predicted probability')
-    plt.ylabel('observed fraction positive')
+    plt.xlabel('mean predicted probability $\\hat{p}$')
+    plt.ylabel('observed positive fraction')
+    plt.title(f'feasibility calibration')
     plt.xlim(0, 1)
     plt.ylim(0, 1)
     plt.grid(alpha=0.3)
     plt.legend()
     plt.tight_layout()
-    plt.savefig(os.path.join('plots', model_name, 'feasibility_calibration'), dpi=150)
+    plt.savefig(os.path.join('plots', ensemble_name, 'feasibility_calibration'), dpi=150)
     plt.close()
 
 @torch.no_grad()
@@ -315,25 +304,8 @@ def matrix_eval(model,
     }
 
 def main():
-    # output = manual_eval('first_good.pt',
-    #             '2-methyltetrahydrofuran',
-    #             'acetone',
-    #             'sodium bicarbonate',
-    #             1000,
-    #             300,
-    #             0,
-    #             0,
-    #             [0],
-    #             [3], [3], [2], 25)
-    #
-    # print(output)
-
-    # model = Model()
-    # name = 'ensemble_best_150726.pt'
-    # model.load_state_dict(torch.load(name)['model_state_dict'])
-    # dataset = Dataset('val')
-
-    M = 5
+    create_calibration_plot_binary_classification('5_ensemble_best_230726.pt_post_best.pt', Dataset('test'))
+    create_regression_calibration_plot('5_ensemble_best_230726.pt_post_best.pt', Dataset('test'), sys.argv[1])
 
     stream = StreamComposition(target_name='2-methyltetrahydrofuran',
                                target_kgph=34,
@@ -356,12 +328,6 @@ def main():
 
     print(evaluate_ensemble_from_file(ensemble_name, test_loader))
     print(evaluate(models.load_model(single_name), DataLoader(Dataset('test'), batch_size=VAL_BATCH_SIZE)).div_by(len(Dataset('test'))))
-
-    ...
-    # print(print_model_output_comparison(output['predicted'], output['true']))
-
-    # create_regression_calibration_plot(model, dataset, name, 'purity')
-    # create_regression_calibration_plot(model, dataset, name, 'cost_per_kg')
 
 if __name__ == '__main__':
     main()

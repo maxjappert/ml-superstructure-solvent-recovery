@@ -41,7 +41,11 @@ class ModelDistributionOutput:
 
 def load_ensemble(checkpoint_name: str) -> list[Model]:
     checkpoint = torch.load(checkpoint_name)
-    M = checkpoint['hparams']['M']
+
+    try:
+        M = checkpoint['hparams']['M']
+    except KeyError:
+        M = 5
 
     model_list = []
 

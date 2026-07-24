@@ -29,7 +29,7 @@ def get_stream(row):
                              solids_kgph=row['solids_kgph'])
 
 @torch.no_grad()
-def acquisition_function(ensemble: list, datapool_set: Dataset):
+def acquisition_function(ensemble: list, datapool_set: Dataset, len_dataset:int):
     loader = DataLoader(datapool_set, batch_size=VAL_BATCH_SIZE, num_workers=NUM_WORKERS, shuffle=False)
 
     total_epistemic_uncertainties = []
@@ -55,7 +55,7 @@ def acquisition_function(ensemble: list, datapool_set: Dataset):
     total_epistemic_uncertainties = torch.Tensor(total_epistemic_uncertainties)
     total_aleatoric_uncertainties = torch.Tensor(total_aleatoric_uncertainties)
 
-    top_vals, top_pos = torch.topk(total_epistemic_uncertainties, int(ACTIVE_NUM_DATA_POOL * ACTIVE_NEW_DATA_FRAC))
+    top_vals, top_pos = torch.topk(total_epistemic_uncertainties, int(len_dataset * ACTIVE_NEW_DATA_FRAC))
 
     print(f'Selected epistemic uncertainty for this generation: {top_vals.mean().item():4f} +- {top_vals.std().item():4f}')
 
@@ -101,7 +101,7 @@ def main():
 
         print('done')
         print('starting acquisition function')
-        data_selected = acquisition_function(ensemble, datapool_set)
+        data_selected = acquisition_function(ensemble, datapool_set, len(dataset_train))
         print('done')
 
         dataset_train.append(data_selected.X, data_selected.y)
