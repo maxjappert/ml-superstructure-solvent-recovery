@@ -19,7 +19,7 @@ ACTIVE_NEW_DATA_FRAC = 0.05
 ACTIVE_NUM_EPOCHS = 60
 ACTIVE_EPSILON_EXPLORATION = 0.5
 
-FLAGSHIP_MODEL_NAME = '5_ensemble_best_230726_2.pt_post.pt'
+FLAGSHIP_MODEL_NAME = '5_ensemble_best_230726_4.pt_post.pt'
 
 loss_scalar_fractions = 1
 loss_scalar_cost = 1
