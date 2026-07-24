@@ -11,7 +11,6 @@ from datasets import Dataset
 from solvent_recovery.properties import get_solvent_props, get_salt_props, get_water_props, get_solids_props
 from solvent_recovery.units import log_alphas_pairwise
 
-
 @dataclass(frozen=False, slots=True)
 class ModelOutput:
     feasibility_logit: Tensor
@@ -40,7 +39,7 @@ class ModelDistributionOutput:
 
 
 def load_ensemble(checkpoint_name: str) -> list[Model]:
-    checkpoint = torch.load(checkpoint_name)
+    checkpoint = torch.load(checkpoint_name, map_location=DEVICE)
 
     try:
         M = checkpoint['hparams']['M']
@@ -97,6 +96,7 @@ class StreamComposition:
                       'salt': self.salt['props'],
                       'water': self.water['props'],
                       'solids': self.solids['props']}
+
 
 @dataclass(frozen=False, slots=True)
 class LossBreakdown:
