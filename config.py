@@ -32,3 +32,7 @@ PRED_METRICS = {
     'purity': 2,
     'cost_per_kg': 3
 }
+
+SCALING_RECOVERY = torch.Tensor([0.07])
+SCALING_PURITY = torch.Tensor([0.2])
+SCALING_COST = torch.Tensor([0.16])

@@ -6,7 +6,7 @@ from torch import nn, Tensor
 import torch.nn.functional as F
 
 import config
-from config import DEVICE, loss_scalar_fractions, loss_scalar_cost, eps
+from config import DEVICE, loss_scalar_fractions, loss_scalar_cost, eps, SCALING_RECOVERY, SCALING_PURITY, SCALING_COST
 from datasets import Dataset
 from solvent_recovery.properties import get_solvent_props, get_salt_props, get_water_props, get_solids_props
 from solvent_recovery.units import log_alphas_pairwise
@@ -324,7 +324,7 @@ def transfer_ensemble_model_outputs(outputs: list[ModelOutput]):
     return output_transferred
 
 @torch.no_grad()
-def get_ensemble_predictions_from_tensor(ensemble, input_tensor, s_squared_recovery=torch.Tensor([1]), s_squared_purity=torch.Tensor([1]), s_squared_cost=torch.Tensor([1])):
+def get_ensemble_predictions_from_tensor(ensemble, input_tensor, scaling=True):
     raw_outputs = []
 
     # todo plots with both scaled and not
@@ -334,10 +334,6 @@ def get_ensemble_predictions_from_tensor(ensemble, input_tensor, s_squared_recov
         raw_outputs.append(model(input_tensor.to(DEVICE)))
 
     outputs_transferred = transfer_ensemble_model_outputs(raw_outputs)
-
-    s_squared_recovery = s_squared_recovery.to(DEVICE)
-    s_squared_purity = s_squared_purity.to(DEVICE)
-    s_squared_cost = s_squared_cost.to(DEVICE)
 
     # output = ModelDistributionOutput.initialise_dicts()
 
@@ -352,7 +348,10 @@ def get_ensemble_predictions_from_tensor(ensemble, input_tensor, s_squared_recov
     recovery_aleatoric = outputs_transferred.recovery_logvar.exp().mean(dim=0)
     recovery_var = recovery_epistemic + recovery_aleatoric
     recovery_mu = outputs_transferred.recovery_mu.mean(dim=0) # (batchsize,)
-    recovery_dist = torch.distributions.Normal(recovery_mu, recovery_var.sqrt() * s_squared_recovery.sqrt())
+    if scaling:
+        recovery_dist = torch.distributions.Normal(recovery_mu, recovery_var.sqrt() * SCALING_RECOVERY.sqrt())
+    else:
+        recovery_dist = torch.distributions.Normal(recovery_mu, recovery_var.sqrt())
 
     # The paper contains the following formula, which is less numerically stable:
     # recovery_var = ((outputs_transferred.recovery_logvar.exp()
@@ -363,14 +362,19 @@ def get_ensemble_predictions_from_tensor(ensemble, input_tensor, s_squared_recov
     purity_aleatoric = outputs_transferred.purity_logvar.exp().mean(dim=0)
     purity_mu = outputs_transferred.purity_mu.mean(dim=0) # (batchsize,)
     purity_var = purity_epistemic + purity_aleatoric
-    purity_dist = torch.distributions.Normal(purity_mu, purity_var.sqrt() * s_squared_purity.sqrt())
+    if scaling:
+        purity_dist = torch.distributions.Normal(purity_mu, purity_var.sqrt() * SCALING_PURITY.sqrt())
+    else:
+        purity_dist = torch.distributions.Normal(purity_mu, purity_var.sqrt())
 
     cost_per_kg_epistemic = outputs_transferred.cost_per_kg_mu.var(dim=0)
     cost_per_kg_aleatoric = outputs_transferred.cost_per_kg_logvar.exp().mean(dim=0)
     cost_per_kg_mu = outputs_transferred.cost_per_kg_mu.mean(dim=0) # (batchsize,)
     cost_per_kg_var = cost_per_kg_epistemic + cost_per_kg_aleatoric
-    cost_per_kg_dist = torch.distributions.Normal(cost_per_kg_mu, cost_per_kg_var.sqrt() * s_squared_cost.sqrt())
-
+    if scaling:
+        cost_per_kg_dist = torch.distributions.Normal(cost_per_kg_mu, cost_per_kg_var.sqrt() * SCALING_COST.sqrt())
+    else:
+        cost_per_kg_dist = torch.distributions.Normal(cost_per_kg_mu, cost_per_kg_var.sqrt())
 
     return ModelDistributionOutput(feasibility={'dist': torch.distributions.Bernoulli(p_means),
                                                 'epistemic': feasibility_epistemic,

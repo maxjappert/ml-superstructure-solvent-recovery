@@ -67,14 +67,10 @@ def create_regression_calibration_plot(ensemble_name, dataset: Dataset, output_t
     #
     # print(calib_ratio)
 
-    s_squared_recovery = torch.Tensor([0.07])
-    s_squared_purity = torch.Tensor([0.2])
-    s_squared_cost = torch.Tensor([0.16])
-
     x, y = dataset.X.to(DEVICE), dataset.y.to(DEVICE)
 
-    y_hat_scaled = models.get_ensemble_predictions_from_tensor(ensemble, x, s_squared_recovery=s_squared_recovery, s_squared_purity=s_squared_purity, s_squared_cost=s_squared_cost)
-    y_hat_unscaled = models.get_ensemble_predictions_from_tensor(ensemble, x)
+    y_hat_scaled = models.get_ensemble_predictions_from_tensor(ensemble, x, scaling=True)
+    y_hat_unscaled = models.get_ensemble_predictions_from_tensor(ensemble, x, scaling=False)
 
     x, y = x.cpu(), y.cpu()
 
