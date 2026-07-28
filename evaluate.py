@@ -11,7 +11,8 @@ from torch.nn import Module
 from torch.utils.data import DataLoader
 
 import models
-from config import DEVICE, loss_scalar_fractions, loss_scalar_cost, BATCH_SIZE, VAL_BATCH_SIZE
+from config import DEVICE, loss_scalar_fractions, loss_scalar_cost, BATCH_SIZE, VAL_BATCH_SIZE, FLAGSHIP_MODEL_NAME, \
+    PRED_METRICS
 from datasets import Dataset
 from models import Model, LossBreakdown, get_ensemble_predictions, StreamComposition, print_model_output_comparison, \
     load_ensemble, ModelDistributionOutput, get_single_prediction, get_losses, transfer_ensemble_losses
@@ -55,34 +56,54 @@ def evaluate_ensemble_from_file(ensemble_name, loader):
     return transferred_losses.detached_distribution_dict()
 
 @torch.no_grad()
-def create_regression_calibration_plot(ensemble_name, dataset: Dataset, output_type, num_bins=20):
+def create_regression_calibration_plot(ensemble_name, dataset: Dataset, output_type, num_bins=80):
     ensemble = load_ensemble(ensemble_name)
+
+    # dataset_calib = Dataset('calibration')
+    # x_calib, y_calib = dataset_calib.X.to(DEVICE), dataset_calib.y.to(DEVICE)
+    # y_hat_calib = models.get_ensemble_predictions_from_tensor(ensemble, x_calib)
+    #
+    # calib_ratio = (torch.pow(y_calib[:, PRED_METRICS[output_type]] - y_hat_calib.recovery['dist'].mean, 2) / y_hat_calib.recovery['dist'].variance.to(DEVICE)).mean()
+    #
+    # print(calib_ratio)
+
+    r_squared_recovery = torch.Tensor([0.08])
 
     x, y = dataset.X.to(DEVICE), dataset.y.to(DEVICE)
 
-    y_hat = models.get_ensemble_predictions_from_tensor(ensemble, x)
+    y_hat_scaled = models.get_ensemble_predictions_from_tensor(ensemble, x, r_squared_recovery=r_squared_recovery)
+    y_hat_unscaled = models.get_ensemble_predictions_from_tensor(ensemble, x)
 
     x, y = x.cpu(), y.cpu()
 
     p = np.linspace(0.01, 0.99, num_bins)
-    p_hat = []
+    p_hat_scaled = []
+    p_hat_unscaled = []
+
+    scale_param = 0
 
     for level in p:
         # The z-value from the equations for confidence intervals
         z = torch.distributions.Normal(0., 1.).icdf(torch.tensor(level))
         # Equation 3 from Kuleshov et al (2018)
         if output_type == 'recovery':
-            p_hat.append((y[:,1] <= (y_hat.recovery['dist'].mean.cpu() + z * y_hat.recovery['dist'].stddev.cpu())).float().mean())
+            p_hat_scaled.append((y[:,1] <= (y_hat_scaled.recovery['dist'].mean.cpu() + z * y_hat_scaled.recovery['dist'].stddev.cpu())).float().mean())
+            p_hat_unscaled.append((y[:,1] <= (y_hat_unscaled.recovery['dist'].mean.cpu() + z * y_hat_unscaled.recovery['dist'].stddev.cpu())).float().mean())
+            scale_param = r_squared_recovery
         elif output_type == 'purity':
-            p_hat.append((y[:,2] <= (y_hat.purity['dist'].mean.cpu() + z * y_hat.purity['dist'].stddev.cpu())).float().mean())
+            p_hat_scaled.append((y[:,2] <= (y_hat_scaled.purity['dist'].mean.cpu() + z * y_hat_scaled.purity['dist'].stddev.cpu())).float().mean())
+            p_hat_unscaled.append((y[:,1] <= (y_hat_unscaled.purity['dist'].mean.cpu() + z * y_hat_unscaled.purity['dist'].stddev.cpu())).float().mean())
         elif output_type == 'cost_per_kg':
-            p_hat.append((y[:,3] <= (y_hat.cost_per_kg['dist'].mean.cpu() + z * y_hat.cost_per_kg['dist'].stddev.cpu())).float().mean())
+            p_hat_scaled.append((y[:,3] <= (y_hat_scaled.cost_per_kg['dist'].mean.cpu() + z * y_hat_scaled.cost_per_kg['dist'].stddev.cpu())).float().mean())
+            p_hat_unscaled.append((y[:,1] <= (y_hat_unscaled.cost_per_kg['dist'].mean.cpu() + z * y_hat_unscaled.cost_per_kg['dist'].stddev.cpu())).float().mean())
+
 
 
     os.makedirs(os.path.join('plots', ensemble_name), exist_ok=True)
     plt.figure(figsize=(5, 5))
     plt.plot([0, 1], [0, 1], 'k--', label='perfect')  # dotted diagonal
-    plt.scatter(p, p_hat, s=20, alpha=0.7, label='model')
+    plt.scatter(p, p_hat_scaled, s=20, alpha=0.7, label='$\\mathcal{N}(\\hat{\\mu}, s^2 \\cdot \\hat{\\sigma}^2)$')
+    plt.scatter(p, p_hat_unscaled, s=20, alpha=0.7, label='$\\mathcal{N}(\\hat{\\mu},\\hat{\\sigma}^2)$')
     plt.xlabel('Nominal probability $p$')
     plt.ylabel('Observed probability $\\hat{p}$')
     plt.title(f'{output_type} calibration')
@@ -92,6 +113,7 @@ def create_regression_calibration_plot(ensemble_name, dataset: Dataset, output_t
     plt.legend()
     plt.tight_layout()
     plt.savefig(os.path.join('plots', ensemble_name, f'{output_type}_calibration'), dpi=150)
+    plt.show()
     plt.close()
 
 
@@ -304,10 +326,9 @@ def matrix_eval(model,
     }
 
 def main():
-    ensemble_name = '5_ensemble_best_230726_3.pt_post.pt'
 
     # create_calibration_plot_binary_classification('5_ensemble_best_230726.pt_post_best.pt', Dataset('test'))
-    # create_regression_calibration_plot('5_ensemble_best_230726.pt_post_best.pt', Dataset('test'), sys.argv[1])
+    create_regression_calibration_plot(FLAGSHIP_MODEL_NAME, Dataset('test'), 'recovery')
 
     # stream = StreamComposition(target_name='2-methyltetrahydrofuran',
     #                            target_kgph=34,

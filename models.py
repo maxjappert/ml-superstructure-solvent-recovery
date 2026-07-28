@@ -324,14 +324,18 @@ def transfer_ensemble_model_outputs(outputs: list[ModelOutput]):
     return output_transferred
 
 @torch.no_grad()
-def get_ensemble_predictions_from_tensor(ensemble, input_tensor):
+def get_ensemble_predictions_from_tensor(ensemble, input_tensor, r_squared_recovery=torch.Tensor([1])):
     raw_outputs = []
+
+    # todo plots with both scaled and not
 
     for model in ensemble:
         model.eval()
         raw_outputs.append(model(input_tensor.to(DEVICE)))
 
     outputs_transferred = transfer_ensemble_model_outputs(raw_outputs)
+
+    r_squared_recovery = r_squared_recovery.to(DEVICE)
 
     # output = ModelDistributionOutput.initialise_dicts()
 
@@ -346,7 +350,7 @@ def get_ensemble_predictions_from_tensor(ensemble, input_tensor):
     recovery_aleatoric = outputs_transferred.recovery_logvar.exp().mean(dim=0)
     recovery_var = recovery_epistemic + recovery_aleatoric
     recovery_mu = outputs_transferred.recovery_mu.mean(dim=0) # (batchsize,)
-    recovery_dist = torch.distributions.Normal(recovery_mu, recovery_var.sqrt())
+    recovery_dist = torch.distributions.Normal(recovery_mu, recovery_var.sqrt() * r_squared_recovery.sqrt())
 
     # The paper contains the following formula, which is less numerically stable:
     # recovery_var = ((outputs_transferred.recovery_logvar.exp()
