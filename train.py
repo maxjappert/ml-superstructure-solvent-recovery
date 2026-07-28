@@ -103,6 +103,7 @@ def train_ensemble(train_loader, val_loader, M=5, num_epochs=EPOCHS,
         milestones=[warmup_epochs],
     )
 
+    best_ensemble = ensemble
     for epoch in range(num_epochs):
         if verbose:
             print(f'Epoch {epoch + 1}/{num_epochs}')
@@ -238,8 +239,8 @@ def train_epoch(model, loader, optimizer):
 # --- entry point --------------------------------------------------------------
 
 def main():
-    train_set = Dataset('train')
-    val_set = Dataset('val')
+    train_set = Dataset('train_small')
+    val_set = Dataset('val_small')
     train_loader = make_loader(train_set, shuffle=True)
     val_loader = make_loader(val_set, shuffle=False)
 

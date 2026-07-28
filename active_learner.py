@@ -31,7 +31,7 @@ def get_stream(row):
                              solids_kgph=row['solids_kgph'])
 
 @torch.no_grad()
-def acquisition_function(ensemble: list, datapool_set: Dataset, len_train_set:int):
+def acquisition_function(ensemble: list, datapool_set: Dataset, len_train_set:int, baseline_random=False):
     loader = DataLoader(datapool_set, batch_size=VAL_BATCH_SIZE, num_workers=NUM_WORKERS, shuffle=False)
 
     total_epistemic_uncertainties = []
@@ -59,14 +59,14 @@ def acquisition_function(ensemble: list, datapool_set: Dataset, len_train_set:in
 
 
     n_new_data = int(len_train_set * ACTIVE_NEW_DATA_FRAC)
-    top_epist_vals, top_epist_pos = torch.topk(total_epistemic_uncertainties, int(n_new_data * ACTIVE_EPSILON_EXPLORATION))
+    top_epist_vals, top_epist_pos = torch.topk(total_epistemic_uncertainties, int(n_new_data * (1.0 - ACTIVE_EPSILON_EXPLORATION)))
 
     print(f'Selected epistemic uncertainty for this generation: {top_epist_vals.mean().item():4f} +- {top_epist_vals.std(correction=0).item():4f}')
 
     top_epist_X = datapool_set.X[list(top_epist_pos), :]
     top_epist_y = datapool_set.y[list(top_epist_pos), :]
 
-    random_idxs = torch.randint(0, len(datapool_set) - 1, [int(n_new_data * (1.0 - ACTIVE_EPSILON_EXPLORATION)), ])
+    random_idxs = torch.randint(0, len(datapool_set) - 1, [int(n_new_data * ACTIVE_EPSILON_EXPLORATION), ])
     random_X = datapool_set.X[random_idxs]
     random_y = datapool_set.y[random_idxs]
 
@@ -78,18 +78,18 @@ def acquisition_function(ensemble: list, datapool_set: Dataset, len_train_set:in
     return datapool_set
 
 def main():
-    name_input = '5_ensemble_best_230726_4.pt'
+    name_input = '5_ensemble_20260727_142131.pt'
 
     ensemble = load_ensemble(name_input)
 
-    dataset_train = Dataset('train')
+    dataset_train = Dataset('train_small')
     dataset_val = Dataset('val')
+
+    len_original_training_data = len(dataset_train)
 
     loader_val = DataLoader(dataset_val, batch_size=VAL_BATCH_SIZE, shuffle=True, num_workers=NUM_WORKERS)
 
     name_output = name_input + '_post'
-
-    best_val_loss = float('inf')
 
     print(f'active learning for {name_output} starting')
 
@@ -100,6 +100,8 @@ def main():
 
     ensemble_old = ensemble
     dataset_train_old = dataset_train
+
+    best_val_loss = float('inf')
 
     for generation in range(1000):
         print(f'generation {generation+1}')
@@ -114,7 +116,7 @@ def main():
 
         print('done')
         print('starting acquisition function')
-        data_selected = acquisition_function(ensemble, datapool_set, len(dataset_train))
+        data_selected = acquisition_function(ensemble, datapool_set, len_original_training_data, baseline_random=True)
         print('done')
 
         dataset_train.append(data_selected.X, data_selected.y)
@@ -152,7 +154,7 @@ def main():
         print(f'epoch best val loss {generation_best_val_loss}')
         val_losses.append(generation_best_val_loss)
 
-        with open("active_learning_val_losses.json", "w") as f:
+        with open(f"active_learning_val_losses_{name_output}.json", "w") as f:
             json.dump(val_losses, f)
 
 if __name__ == '__main__':

@@ -328,7 +328,8 @@ def main():
     # output = manual_eval('single_best_170726.pt', stream, 0, 0, 0, 0, model_type='single')
 
 
-    print(evaluate_ensemble_from_file('5_ensemble_best_230726_4.pt_post.pt', test_loader))
+    print(evaluate_ensemble_from_file('5_ensemble_20260727_142131.pt_post.pt', test_loader))
+    print(evaluate_ensemble_from_file('5_ensemble_besteval_240726.pt', test_loader))
     print(evaluate_ensemble_from_file('5_ensemble_best_230726_2.pt_post.pt', test_loader))
     print(evaluate_ensemble_from_file('5_ensemble_best_230726.pt', test_loader))
     print(evaluate_ensemble_from_file('5_ensemble_best_220726.pt', test_loader))
