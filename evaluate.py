@@ -67,11 +67,13 @@ def create_regression_calibration_plot(ensemble_name, dataset: Dataset, output_t
     #
     # print(calib_ratio)
 
-    r_squared_recovery = torch.Tensor([0.08])
+    s_squared_recovery = torch.Tensor([0.07])
+    s_squared_purity = torch.Tensor([0.2])
+    s_squared_cost = torch.Tensor([0.16])
 
     x, y = dataset.X.to(DEVICE), dataset.y.to(DEVICE)
 
-    y_hat_scaled = models.get_ensemble_predictions_from_tensor(ensemble, x, r_squared_recovery=r_squared_recovery)
+    y_hat_scaled = models.get_ensemble_predictions_from_tensor(ensemble, x, s_squared_recovery=s_squared_recovery, s_squared_purity=s_squared_purity, s_squared_cost=s_squared_cost)
     y_hat_unscaled = models.get_ensemble_predictions_from_tensor(ensemble, x)
 
     x, y = x.cpu(), y.cpu()
@@ -89,14 +91,15 @@ def create_regression_calibration_plot(ensemble_name, dataset: Dataset, output_t
         if output_type == 'recovery':
             p_hat_scaled.append((y[:,1] <= (y_hat_scaled.recovery['dist'].mean.cpu() + z * y_hat_scaled.recovery['dist'].stddev.cpu())).float().mean())
             p_hat_unscaled.append((y[:,1] <= (y_hat_unscaled.recovery['dist'].mean.cpu() + z * y_hat_unscaled.recovery['dist'].stddev.cpu())).float().mean())
-            scale_param = r_squared_recovery
+            scale_param = s_squared_recovery
         elif output_type == 'purity':
             p_hat_scaled.append((y[:,2] <= (y_hat_scaled.purity['dist'].mean.cpu() + z * y_hat_scaled.purity['dist'].stddev.cpu())).float().mean())
-            p_hat_unscaled.append((y[:,1] <= (y_hat_unscaled.purity['dist'].mean.cpu() + z * y_hat_unscaled.purity['dist'].stddev.cpu())).float().mean())
+            p_hat_unscaled.append((y[:,2] <= (y_hat_unscaled.purity['dist'].mean.cpu() + z * y_hat_unscaled.purity['dist'].stddev.cpu())).float().mean())
+            scale_param = s_squared_purity
         elif output_type == 'cost_per_kg':
             p_hat_scaled.append((y[:,3] <= (y_hat_scaled.cost_per_kg['dist'].mean.cpu() + z * y_hat_scaled.cost_per_kg['dist'].stddev.cpu())).float().mean())
-            p_hat_unscaled.append((y[:,1] <= (y_hat_unscaled.cost_per_kg['dist'].mean.cpu() + z * y_hat_unscaled.cost_per_kg['dist'].stddev.cpu())).float().mean())
-
+            p_hat_unscaled.append((y[:,3] <= (y_hat_unscaled.cost_per_kg['dist'].mean.cpu() + z * y_hat_unscaled.cost_per_kg['dist'].stddev.cpu())).float().mean())
+            scale_param = s_squared_cost
 
 
     os.makedirs(os.path.join('plots', ensemble_name), exist_ok=True)
@@ -106,7 +109,7 @@ def create_regression_calibration_plot(ensemble_name, dataset: Dataset, output_t
     plt.scatter(p, p_hat_unscaled, s=20, alpha=0.7, label='$\\mathcal{N}(\\hat{\\mu},\\hat{\\sigma}^2)$')
     plt.xlabel('Nominal probability $p$')
     plt.ylabel('Observed probability $\\hat{p}$')
-    plt.title(f'{output_type} calibration')
+    plt.title(f'{output_type} calibration with $s^2 = {scale_param.item():.2f}$')
     plt.xlim(0, 1)
     plt.ylim(0, 1)
     plt.grid(alpha=0.3)
@@ -328,7 +331,7 @@ def matrix_eval(model,
 def main():
 
     # create_calibration_plot_binary_classification('5_ensemble_best_230726.pt_post_best.pt', Dataset('test'))
-    create_regression_calibration_plot(FLAGSHIP_MODEL_NAME, Dataset('test'), 'recovery')
+    create_regression_calibration_plot(FLAGSHIP_MODEL_NAME, Dataset('calibration'), 'cost_per_kg')
 
     # stream = StreamComposition(target_name='2-methyltetrahydrofuran',
     #                            target_kgph=34,
