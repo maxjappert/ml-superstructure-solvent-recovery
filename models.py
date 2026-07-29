@@ -120,10 +120,6 @@ class LossBreakdown:
     def zeros(cls) -> "LossBreakdown":
         return cls(**{f.name: torch.zeros([]).to(DEVICE) for f in fields(cls)})
 
-    @classmethod
-    def empty(cls) -> "LossBreakdown":
-        return cls(**{f.name: torch.Tensor().unsqueeze(0).to(DEVICE) for f in fields(cls)})
-
     def add(self, losses: LossBreakdown):
         self.total += losses.total.detach()
         self.feasibility_bce += losses.feasibility_bce.detach()
@@ -295,12 +291,12 @@ def get_losses(model, x, y) -> LossBreakdown:
         feasibility_bce=feasibility_bce * n,
         feasibility_brier=feasibility_brier * n,
         num_correct=num_correct,
-        recovery_nll=recovery_nll * n,
-        recovery_rmse=recovery_rmse * n,
-        purity_nll=purity_nll * n,
-        purity_rmse=purity_rmse * n,
-        cost_per_kg_nll=cost_per_kg_nll * n,
-        cost_per_kg_rmse=cost_per_kg_rmse * n,
+        recovery_nll=recovery_nll * n_feasible,
+        recovery_rmse=recovery_rmse * n_feasible,
+        purity_nll=purity_nll * n_feasible,
+        purity_rmse=purity_rmse * n_feasible,
+        cost_per_kg_nll=cost_per_kg_nll * n_feasible,
+        cost_per_kg_rmse=cost_per_kg_rmse * n_feasible,
     )
 
 
@@ -346,7 +342,7 @@ def get_ensemble_predictions_from_tensor(ensemble, input_tensor, scaling=True):
     feasibility_epistemic = feasibility_total_uncertainty - feasibility_aleatoric # (batchsize,)
 
     # formulas from Lakshminarayanan et al. (2017)
-    recovery_epistemic = outputs_transferred.recovery_mu.var(dim=0)
+    recovery_epistemic = outputs_transferred.recovery_mu.var(dim=0, correction=0)
     recovery_aleatoric = outputs_transferred.recovery_logvar.exp().mean(dim=0)
     recovery_var = recovery_epistemic + recovery_aleatoric
     recovery_mu = outputs_transferred.recovery_mu.mean(dim=0) # (batchsize,)
@@ -360,7 +356,7 @@ def get_ensemble_predictions_from_tensor(ensemble, input_tensor, scaling=True):
     #                    + torch.pow(outputs_transferred.recovery_mu, 2)).mean(dim=0)
     #                    - torch.pow(recovery_mu, 2)) # (batchsize,)
 
-    purity_epistemic = outputs_transferred.purity_mu.var(dim=0)
+    purity_epistemic = outputs_transferred.purity_mu.var(dim=0, correction=0)
     purity_aleatoric = outputs_transferred.purity_logvar.exp().mean(dim=0)
     purity_mu = outputs_transferred.purity_mu.mean(dim=0) # (batchsize,)
     purity_var = purity_epistemic + purity_aleatoric
@@ -369,7 +365,7 @@ def get_ensemble_predictions_from_tensor(ensemble, input_tensor, scaling=True):
     else:
         purity_dist = torch.distributions.Normal(purity_mu, purity_var.sqrt())
 
-    cost_per_kg_epistemic = outputs_transferred.cost_per_kg_mu.var(dim=0)
+    cost_per_kg_epistemic = outputs_transferred.cost_per_kg_mu.var(dim=0, correction=0)
     cost_per_kg_aleatoric = outputs_transferred.cost_per_kg_logvar.exp().mean(dim=0)
     cost_per_kg_mu = outputs_transferred.cost_per_kg_mu.mean(dim=0) # (batchsize,)
     cost_per_kg_var = cost_per_kg_epistemic + cost_per_kg_aleatoric
@@ -420,38 +416,6 @@ def get_ensemble_predictions(ensemble: list, stream: StreamComposition, temperat
     input_tensor = convert_data_to_input_tensor(stream, temperature_C, superstructure_idxs, data_name=data_name)
 
     return get_ensemble_predictions_from_tensor(ensemble, input_tensor)
-
-def get_single_prediction(model, stream: StreamComposition, temperature_C: float, superstructure_idxs, data_name='train'):
-    log_alphas = log_alphas_pairwise(stream.get_kgph_dict(), stream.get_props_dict(), temperature_C + 273.15)
-
-    input_tensor = torch.tensor([stream.target_solvent['kgph'],
-                                 stream.solvent2['kgph'],
-                                 stream.water['kgph'],
-                                 stream.salt['kgph'],
-                                 stream.solids['kgph'],
-                                 temperature_C,
-                                 stream.target_solvent['props'].MW,
-                                 stream.target_solvent['props'].rho,
-                                 stream.target_solvent['props'].Tb,
-                                 stream.target_solvent['props'].Hvap,
-                                 stream.target_solvent['props'].Cp,
-                                 stream.target_solvent['props'].logP,
-                                 log_alphas['target']['solvent2'],
-                                 log_alphas['target']['water'],
-                                 stream.solvent2['props'].MW,
-                                 stream.solvent2['props'].rho,
-                                 stream.solvent2['props'].Tb,
-                                 stream.solvent2['props'].Hvap,
-                                 stream.solvent2['props'].Cp,
-                                 stream.solvent2['props'].logP,
-                                 superstructure_idxs[0],
-                                superstructure_idxs[1],
-                                superstructure_idxs[2],
-                                superstructure_idxs[3]]).to('cpu')
-
-    input_tensor = Dataset(data_name).standardiser_X.transform(input_tensor)
-
-    return model(input_tensor)
 
 
 def transfer_ensemble_losses(losses: list[LossBreakdown], normaliser: int) -> LossBreakdown:

@@ -219,27 +219,14 @@ def manual_eval(models_name,
                                                   purity=r.target_purity,
                                                   cost_per_kg=r.cost_usd_per_kg_recovered)
 
-    if model_type == 'ensemble':
-        model_list = load_ensemble(models_name)
-        return {
-            'predicted': get_ensemble_predictions(model_list,
-                                                  stream,
-                                                  temperature_C,
-                                                  [solid_removal_idx, recovery_idx, purification_idx, refinement_idx]),
-            'true': ground_truth
-        }
-    elif model_type == 'single':
-        model = models.load_model(models_name).to('cpu')
-
-        model_output = get_single_prediction(model, stream, temperature_C, [solid_removal_idx, recovery_idx, purification_idx, refinement_idx])
-
-        return {
-            'predicted': models.ModelDistributionOutput(feasibility=torch.sigmoid(model_output.feasibility_logit).item(),
-                                                        recovery=model_output.recovery_mu,
-                                                        purity=model_output.purity_mu,
-                                                        cost_per_kg=model_output.cost_per_kg_mu),
-            'true': ground_truth
-        }
+    model_list = load_ensemble(models_name)
+    return {
+        'predicted': get_ensemble_predictions(model_list,
+                                              stream,
+                                              temperature_C,
+                                              [solid_removal_idx, recovery_idx, purification_idx, refinement_idx]),
+        'true': ground_truth
+    }
 
 
 @torch.no_grad()
