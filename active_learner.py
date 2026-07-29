@@ -35,7 +35,8 @@ def acquisition_function(ensemble: list, datapool_set: Dataset, len_train_set: i
     # the validation loader
     loader = DataLoader(datapool_set, batch_size=VAL_BATCH_SIZE, num_workers=NUM_WORKERS, shuffle=False)
 
-    total_epistemic_uncertainties = []
+    total_epistemic_regression = []
+    total_epistemic_classification = []
 
     for X, y in loader:
         # run the validation batch through the ensemble and receive a ModelDistributionOutput
@@ -44,30 +45,28 @@ def acquisition_function(ensemble: list, datapool_set: Dataset, len_train_set: i
         # creates a per-datapoint list where only the feasible datapoints are set to True
         # this is used such that the unfeasible datapoints, whose other metrics have no consequence,
         # don't pollute the uncertainty ranking
-        feasible_mask = y[:,0].squeeze().bool().to(DEVICE)
+        feasible_mask = y[:,0].squeeze().to(DEVICE)
 
         # first sum all the regression uncertainties
-        epistemic_regression = (z_score(prediction.recovery['epistemic'])
-                                + z_score(prediction.purity['epistemic'])
-                                + z_score(prediction.cost_per_kg['epistemic']))
+        epistemic_regression = (z_score(prediction.recovery['epistemic'] * feasible_mask)
+                                + z_score(prediction.purity['epistemic'] * feasible_mask)
+                                + z_score(prediction.cost_per_kg['epistemic'] * feasible_mask))
 
-        # then zero out all infeasible points
-        epistemic_regression = epistemic_regression * feasible_mask  # zero out infeasible points
-
-        # add the feasibility epistemic uncertainties
-        total_epistemic_uncertainty = (z_score(prediction.feasibility['epistemic']) + epistemic_regression).detach()
+        epistemic_classification = z_score(prediction.feasibility['epistemic'])
 
         # concatenate to the list of uncertainties per data point
-        total_epistemic_uncertainties.extend(list(total_epistemic_uncertainty))
+        total_epistemic_regression.extend(list(epistemic_regression))
+        total_epistemic_classification.extend(list(epistemic_classification))
 
     # convert this list to a tensor
-    total_epistemic_uncertainties = torch.Tensor(total_epistemic_uncertainties)
+    total_epistemic_regression = torch.Tensor(total_epistemic_regression)
+    total_epistemic_classification = torch.Tensor(total_epistemic_classification)
 
     # the number of acquired data is equal to a fraction of the original training set length
     n_new_data = int(len_train_set * ACTIVE_NEW_DATA_FRAC)
 
     # retrieve the top (1-eps) fraction of epistemically uncertain data
-    top_epist_vals, top_epist_pos = torch.topk(total_epistemic_uncertainties, int(n_new_data * (1.0 - ACTIVE_EPSILON_EXPLORATION)))
+    top_epist_vals, top_epist_pos = torch.topk(total_epistemic_regression, int(n_new_data * (1.0 - ACTIVE_EPSILON_EXPLORATION)))
 
     print(f'Selected epistemic uncertainty for this generation: {top_epist_vals.mean().item():4f} +- {top_epist_vals.std(correction=0).item():4f}')
 
@@ -87,7 +86,7 @@ def acquisition_function(ensemble: list, datapool_set: Dataset, len_train_set: i
     return datapool_set
 
 def main():
-    name_input = '5_ensemble_20260727_142131_beta1.pt'
+    name_input = '5_ensemble_20260729_small.pt'
 
     ensemble = load_ensemble(name_input)
 

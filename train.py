@@ -245,7 +245,7 @@ def train_epoch(model, loader, optimizer):
 
 def main():
     train_set = Dataset('train_small')
-    val_set = Dataset('val_small')
+    val_set = Dataset('val')
     train_loader = make_loader(train_set, shuffle=True)
     val_loader = make_loader(val_set, shuffle=False)
 
