@@ -43,7 +43,7 @@ def evaluate(model, loader, plots=False, model_name=None):
     return total_losses
 
 @torch.no_grad()
-def evaluate_ensemble_from_file(ensemble_name, loader):
+def evaluate_ensemble_from_file(ensemble_name, loader, as_dict=True):
     ensemble = load_ensemble(ensemble_name)
 
     losses = []
@@ -53,7 +53,10 @@ def evaluate_ensemble_from_file(ensemble_name, loader):
 
     transferred_losses = transfer_ensemble_losses(losses, len(loader.dataset))
 
-    return transferred_losses.detached_distribution_dict()
+    if as_dict:
+        return transferred_losses.detached_distribution_dict()
+    else:
+        return transferred_losses
 
 @torch.no_grad()
 def create_regression_calibration_plot(ensemble_name, dataset: Dataset, output_type, num_bins=80):

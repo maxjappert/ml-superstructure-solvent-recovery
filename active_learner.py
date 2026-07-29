@@ -1,3 +1,4 @@
+import copy
 import json
 import os
 import sys
@@ -74,7 +75,7 @@ def acquisition_function(ensemble: list, datapool_set: Dataset, len_train_set: i
     top_epist_y = datapool_set.y[list(top_epist_pos), :]
 
     # add an eps fraction of random data
-    random_idxs = torch.randint(0, len(datapool_set) - 1, [int(n_new_data * ACTIVE_EPSILON_EXPLORATION), ])
+    random_idxs = torch.randperm(len(datapool_set))[:int(n_new_data * ACTIVE_EPSILON_EXPLORATION)]
     random_X = datapool_set.X[random_idxs]
     random_y = datapool_set.y[random_idxs]
 
@@ -104,13 +105,13 @@ def main():
     # evaluate the baseline
     print('Pre-active learning evaluation')
     val_losses = []
-    val_loss_og = evaluate_ensemble_from_file(name_input, loader_val)
-    print(val_loss_og)
+    val_loss_og = evaluate_ensemble_from_file(name_input, loader_val, as_dict=False)
+    print(val_loss_og.detached_distribution_dict())
 
     ensemble_old = ensemble
-    dataset_train_old = dataset_train
+    dataset_train_old = copy.deepcopy(dataset_train)
 
-    best_val_loss = float('inf')
+    best_val_loss = val_loss_og.total.mean().item()
 
     # loop over the epochs
     for generation in range(1000):
@@ -145,7 +146,7 @@ def main():
             best_val_loss = generation_best_val_loss
             print(f'{name_output} saved!')
             ensemble_old = ensemble
-            dataset_train_old = dataset_train
+            dataset_train_old = copy.deepcopy(dataset_train)
             torch.save(data_selected, os.path.join('data', f'{name_output}_data_{generation + 1}.pt'))
         else:
             print('reverting to previous state as no improvement has been recognised')
