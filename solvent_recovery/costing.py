@@ -64,6 +64,8 @@ class UnitResult:
 
     @property
     def Cc(self) -> float:
+        # Cost of technologies [SI p.6]: Cc_i/C0_i = (Qc_i/Q0_i)^nc,
+        # nc = 0.67 ("2/3 rule") [GAMS]; C0, Q0 from SI Table C.1
         p = TECH_COST[self.tech]
         if self.Qc <= 0:
             return 0.0
@@ -71,20 +73,33 @@ class UnitResult:
 
     @property
     def Nlbr(self) -> float:
+        # Labor requirement [SI p.6]: Nlb_i * Q0_i = Nlabr_i * Qc_i
         p = TECH_COST[self.tech]
         return p["Nlabr"] * self.Qc / p["Q0"]
 
 
 def annualized_cost(units: List[UnitResult]) -> Dict[str, float]:
-    """Aggregate the annualized cost [$/yr] over all active units."""
+    """Aggregate annualized cost [$/yr]; SI section B, "Costing" (pp. 6-7).
+    (The SI expresses these in million $/yr; here plain $/yr.)"""
+    # Annualized capital [SI p.6]: CC_AC = 1.66 * CRF * BMC * sum_i Cc_i
     cap = CAP_FACTOR * CRF * BMC_MULT * sum(u.Cc for u in units)
+    # Labor cost [SI p.6]: CC_LB = Clbr * Tann * sum_i Nlbr_i
     labor = C_LABOR * TANN * sum(u.Nlbr for u in units)
+    # Utility cost [SI p.7]:
+    #   CC_UC = (sum PW_i*C_elec + sum Mstm_i*C_stm) * Tann
+    # [DEV] plus the cooling-water term Mcw_i*C_cw: the SI equation omits it
+    # although SI Table C.2 prices cooling water; included here (tiny).
     util = (sum(u.PW for u in units) * C_ELEC
             + sum(u.Mstm for u in units) * C_STEAM
             + sum(u.Mcw for u in units) * C_CW) * TANN
+    # Membrane cost [SI p.7]: CC_MC = Tann * sum_i1 CPM_i1*Qc_i1 / Rep_time
     memb = (TANN / REP_TIME) * sum(TECH_COST[u.tech]["CPM"] * u.Qc for u in units)
+    # Consumable costs [SI p.6]: Cons_i = (tau_ann/theta_rep)*pi_rep*Qc_i;
+    # realized here as $/h streams (ATPE hexane/salt make-up)
     consum = TANN * sum(u.cons_per_h for u in units)
+    # Other cost [SI p.7]: CC_OC = 2.78 * CC_LB
     overhead = 2.78 * labor
+    # Total [SI p.7]: CC_TC = CC_AC + CC_UC + CC_MC + CC_OC + CC_LB
     total = cap + labor + util + memb + consum + overhead
     return {
         "capital": cap, "labor": labor, "utilities": util,

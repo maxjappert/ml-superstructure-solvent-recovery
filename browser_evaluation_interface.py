@@ -122,12 +122,9 @@ except Exception:
         return sorted(SALT_DATA.keys())
 
 
-try:
-    from models import StreamComposition
-    from evaluate import manual_eval
-except Exception as exc:  # noqa: BLE001
-    MODEL_AVAILABLE = False
-    IMPORT_ERROR = f"{type(exc).__name__}: {exc}"
+
+from models import StreamComposition
+from evaluate import manual_eval
 
 
 # =====================================================================

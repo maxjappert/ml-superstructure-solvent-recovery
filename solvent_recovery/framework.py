@@ -14,7 +14,8 @@ Stage index maps:
 """
 from __future__ import annotations
 
-from typing import NamedTuple
+import math
+from typing import NamedTuple, Optional
 
 from . import units as U
 from .costing import annualized_cost
@@ -82,6 +83,7 @@ def compute(solvent_target_name: str,
         if v < 0:
             raise ValueError(f"{nm} must be >= 0")
 
+    # ---- resolve properties
     props = {
         "target": get_solvent_props(solvent_target_name),
         "solvent2": get_solvent_props(solvent2_name),
@@ -154,10 +156,16 @@ def compute(solvent_target_name: str,
 
 def incineration_cost(total_kgph: float, organic_fraction: float = 1.0,
                       heating_value_MJ_per_kg: float = 30.0) -> float:
-    """Annualized incineration baseline [$/yr] (SI, simplified).
+    """Annualized incineration baseline [$/yr] (SI pp. 20-21, simplified).
 
-    Uses the SI's fuel/air/energy-credit structure with a generic heating
-    value for the organic fraction instead of the Dulong elemental formula.
+    SI equations retained: fuel demand m_fuel*NE_fuel = Q_solv*m_solv with
+    NE_fuel = 38.9 MJ/kg; air feed m_air = 4.35*O*m_solv; produced energy
+    E_prod = eff*E_con (eff = 0.35); fuel $0.81/kg, electricity $0.10/kWh
+    (3.6 MJ/kWh), air $0.0004/m3; capital $0.967M at 100000 kg/h with the
+    0.67 exponent; 0.1 laborers at standard capacity, $30/h; 340 day/yr.
+    [DEV] The Dulong heating value (SI p.20: 14544*C + 62208*(H - O/8) +
+    4050*S, elemental basis) is replaced by a generic organic heating value
+    (default 30 MJ/kg) since elemental compositions are not tracked.
     """
     m = total_kgph / 3600.0                       # kg/s
     Q = heating_value_MJ_per_kg * organic_fraction

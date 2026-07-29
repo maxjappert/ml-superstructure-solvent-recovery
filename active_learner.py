@@ -31,37 +31,42 @@ def get_stream(row):
                              solids_kgph=row['solids_kgph'])
 
 @torch.no_grad()
-def acquisition_function(ensemble: list, datapool_set: Dataset, len_train_set:int, baseline_random=False):
+def acquisition_function(ensemble: list, datapool_set: Dataset, len_train_set: int) -> Dataset:
+    # the validation loader
     loader = DataLoader(datapool_set, batch_size=VAL_BATCH_SIZE, num_workers=NUM_WORKERS, shuffle=False)
 
     total_epistemic_uncertainties = []
-    total_aleatoric_uncertainties = []
 
     for X, y in loader:
-        # print(f'{idx+1}/{len(datapool_set)}')
-        prediction = get_ensemble_predictions_from_tensor(ensemble, X) # ModelDistributionOutput
+        # run the validation batch through the ensemble and receive a ModelDistributionOutput
+        prediction = get_ensemble_predictions_from_tensor(ensemble, X)
 
-        feasible_mask = y[:,0].squeeze().bool().to(DEVICE)  # adjust to your actual y structure
+        # creates a per-datapoint list where only the feasible datapoints are set to True
+        # this is used such that the unfeasible datapoints, whose other metrics have no consequence,
+        # don't pollute the uncertainty ranking
+        feasible_mask = y[:,0].squeeze().bool().to(DEVICE)
 
+        # first sum all the regression uncertainties
         epistemic_regression = (z_score(prediction.recovery['epistemic'])
                                 + z_score(prediction.purity['epistemic'])
                                 + z_score(prediction.cost_per_kg['epistemic']))
+
+        # then zero out all infeasible points
         epistemic_regression = epistemic_regression * feasible_mask  # zero out infeasible points
 
+        # add the feasibility epistemic uncertainties
         total_epistemic_uncertainty = (z_score(prediction.feasibility['epistemic']) + epistemic_regression).detach()
 
-        # total_aleatoric_uncertainty =(z_score(prediction.feasibility['aleatoric'])
-        #                                + z_score(prediction.recovery['aleatoric'])
-        #                                + z_score(prediction.purity['aleatoric'])
-        #                                + z_score(prediction.cost_per_kg['aleatoric'])).detach()
-        #
+        # concatenate to the list of uncertainties per data point
         total_epistemic_uncertainties.extend(list(total_epistemic_uncertainty))
-        # total_aleatoric_uncertainties.extend(list(total_aleatoric_uncertainty))
 
+    # convert this list to a tensor
     total_epistemic_uncertainties = torch.Tensor(total_epistemic_uncertainties)
-    # total_aleatoric_uncertainties = torch.Tensor(total_aleatoric_uncertainties)
 
+    # the number of acquired data is equal to a fraction of the original training set length
     n_new_data = int(len_train_set * ACTIVE_NEW_DATA_FRAC)
+
+    # retrieve the top (1-eps) fraction of epistemically uncertain data
     top_epist_vals, top_epist_pos = torch.topk(total_epistemic_uncertainties, int(n_new_data * (1.0 - ACTIVE_EPSILON_EXPLORATION)))
 
     print(f'Selected epistemic uncertainty for this generation: {top_epist_vals.mean().item():4f} +- {top_epist_vals.std(correction=0).item():4f}')
@@ -69,8 +74,7 @@ def acquisition_function(ensemble: list, datapool_set: Dataset, len_train_set:in
     top_epist_X = datapool_set.X[list(top_epist_pos), :]
     top_epist_y = datapool_set.y[list(top_epist_pos), :]
 
-    # print(top_epist_y[:, 0])
-
+    # add an eps fraction of random data
     random_idxs = torch.randint(0, len(datapool_set) - 1, [int(n_new_data * ACTIVE_EPSILON_EXPLORATION), ])
     random_X = datapool_set.X[random_idxs]
     random_y = datapool_set.y[random_idxs]
@@ -98,6 +102,7 @@ def main():
 
     print(f'active learning for {name_output} starting')
 
+    # evaluate the baseline
     print('Pre-active learning evaluation')
     val_losses = []
     val_loss_og = evaluate_ensemble_from_file(name_input, loader_val)
@@ -108,31 +113,24 @@ def main():
 
     best_val_loss = float('inf')
 
+    # loop over the epochs
     for generation in range(1000):
         print(f'generation {generation+1}')
 
         datapool_name = f'temp_datapool'
 
-        print('starting data pool generation')
-        # dataframe = create_dataset(datapool_name, ACTIVE_NUM_DATA_POOL, SEED, return_df=True, save_to_file=False)
         dataframe = create_dataset_parallel(datapool_name, ACTIVE_NUM_DATA_POOL, SEED + generation, return_df=True, save_to_file=False)
-        # generate new data
         datapool_set = Dataset(datapool_name, df=dataframe)
 
-        print('done')
-        print('starting acquisition function')
-        data_selected = acquisition_function(ensemble, datapool_set, len_original_training_data, baseline_random=True)
-        print('done')
+        data_selected = acquisition_function(ensemble, datapool_set, len_original_training_data)
 
         dataset_train.append(data_selected.X, data_selected.y)
 
         print(f'new dataset length {len(dataset_train)}')
 
-        print('starting training')
         # throw away old weights
         ensemble, _, val_losses_list = train_ensemble(DataLoader(dataset_train, batch_size=ACTIVE_BATCH_SIZE, shuffle=True, num_workers=NUM_WORKERS),
                        loader_val, num_epochs=ACTIVE_NUM_EPOCHS, weight_decay=ACTIVE_WEIGHT_DECAY, lr=ACTIVE_LR, verbose=False)
-        print('done')
 
         sorted_val_losses = sorted(val_losses_list, key=lambda x: x.total.mean().item())
         generation_best_val_loss = sorted_val_losses[0].total.mean().item()
@@ -161,6 +159,8 @@ def main():
 
         with open(f"active_learning_val_losses_{name_output}.json", "w") as f:
             json.dump(val_losses, f)
+
+        print()
 
 if __name__ == '__main__':
     main()
