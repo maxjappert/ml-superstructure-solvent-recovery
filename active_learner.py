@@ -41,22 +41,25 @@ def acquisition_function(ensemble: list, datapool_set: Dataset, len_train_set:in
         # print(f'{idx+1}/{len(datapool_set)}')
         prediction = get_ensemble_predictions_from_tensor(ensemble, X) # ModelDistributionOutput
 
-        total_epistemic_uncertainty = (z_score(prediction.feasibility['epistemic'])
-                                       + z_score(prediction.recovery['epistemic'])
-                                       + z_score(prediction.purity['epistemic'])
-                                       + z_score(prediction.cost_per_kg['epistemic'])).detach()
+        feasible_mask = y[:,0].squeeze().bool().to(DEVICE)  # adjust to your actual y structure
 
-        total_aleatoric_uncertainty =(z_score(prediction.feasibility['aleatoric'])
-                                       + z_score(prediction.recovery['aleatoric'])
-                                       + z_score(prediction.purity['aleatoric'])
-                                       + z_score(prediction.cost_per_kg['aleatoric'])).detach()
+        epistemic_regression = (z_score(prediction.recovery['epistemic'])
+                                + z_score(prediction.purity['epistemic'])
+                                + z_score(prediction.cost_per_kg['epistemic']))
+        epistemic_regression = epistemic_regression * feasible_mask  # zero out infeasible points
 
+        total_epistemic_uncertainty = (z_score(prediction.feasibility['epistemic']) + epistemic_regression).detach()
+
+        # total_aleatoric_uncertainty =(z_score(prediction.feasibility['aleatoric'])
+        #                                + z_score(prediction.recovery['aleatoric'])
+        #                                + z_score(prediction.purity['aleatoric'])
+        #                                + z_score(prediction.cost_per_kg['aleatoric'])).detach()
+        #
         total_epistemic_uncertainties.extend(list(total_epistemic_uncertainty))
-        total_aleatoric_uncertainties.extend(list(total_aleatoric_uncertainty))
+        # total_aleatoric_uncertainties.extend(list(total_aleatoric_uncertainty))
 
     total_epistemic_uncertainties = torch.Tensor(total_epistemic_uncertainties)
-    total_aleatoric_uncertainties = torch.Tensor(total_aleatoric_uncertainties)
-
+    # total_aleatoric_uncertainties = torch.Tensor(total_aleatoric_uncertainties)
 
     n_new_data = int(len_train_set * ACTIVE_NEW_DATA_FRAC)
     top_epist_vals, top_epist_pos = torch.topk(total_epistemic_uncertainties, int(n_new_data * (1.0 - ACTIVE_EPSILON_EXPLORATION)))
@@ -65,6 +68,8 @@ def acquisition_function(ensemble: list, datapool_set: Dataset, len_train_set:in
 
     top_epist_X = datapool_set.X[list(top_epist_pos), :]
     top_epist_y = datapool_set.y[list(top_epist_pos), :]
+
+    # print(top_epist_y[:, 0])
 
     random_idxs = torch.randint(0, len(datapool_set) - 1, [int(n_new_data * ACTIVE_EPSILON_EXPLORATION), ])
     random_X = datapool_set.X[random_idxs]

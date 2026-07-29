@@ -79,8 +79,13 @@ def train_ensemble(train_loader, val_loader, M=5, num_epochs=EPOCHS,
         # hand vmap a plain dict of scalars via its shallow field iteration.
         return {name: value for name, value in losses}
 
-    vmapped_losses = torch.vmap(per_model_loss_dict, in_dims=(0, 0, None, None),
+    try:
+        vmapped_losses = torch.vmap(per_model_loss_dict, in_dims=(0, 0, None, None),
                                 randomness='different')
+    except ValueError:
+        return ensemble, [], []
+
+
     if USE_COMPILE:
         vmapped_losses = torch.compile(vmapped_losses, dynamic=False)
 

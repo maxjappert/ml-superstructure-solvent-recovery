@@ -6,7 +6,8 @@ from torch import nn, Tensor
 import torch.nn.functional as F
 
 import config
-from config import DEVICE, loss_scalar_fractions, loss_scalar_cost, eps, SCALING_RECOVERY, SCALING_PURITY, SCALING_COST
+from config import DEVICE, loss_scalar_fractions, loss_scalar_cost, eps, SCALING_RECOVERY, SCALING_PURITY, SCALING_COST, SCALING_FEASIBILITY
+
 from datasets import Dataset
 from solvent_recovery.properties import get_solvent_props, get_salt_props, get_water_props, get_solids_props
 from solvent_recovery.units import log_alphas_pairwise
@@ -255,7 +256,7 @@ def get_losses(model, x, y) -> LossBreakdown:
     y_hat = model(x)
 
     target_feas = y[:, 0]
-    feasibility_bce = F.binary_cross_entropy_with_logits(y_hat.feasibility_logit, target_feas)
+    feasibility_bce = F.binary_cross_entropy_with_logits(y_hat.feasibility_logit, target_feas.squeeze())
     feasibility_brier = brier_score(y_hat.feasibility_logit, target_feas)
 
     # Static-shape feasibility gating: compute per-sample losses over the FULL
@@ -327,8 +328,6 @@ def transfer_ensemble_model_outputs(outputs: list[ModelOutput]):
 def get_ensemble_predictions_from_tensor(ensemble, input_tensor, scaling=True):
     raw_outputs = []
 
-    # todo plots with both scaled and not
-
     for model in ensemble:
         model.eval()
         raw_outputs.append(model(input_tensor.to(DEVICE)))
@@ -337,7 +336,10 @@ def get_ensemble_predictions_from_tensor(ensemble, input_tensor, scaling=True):
 
     # output = ModelDistributionOutput.initialise_dicts()
 
-    ps = torch.sigmoid(outputs_transferred.feasibility_logit) # (M, batchsize)
+    if scaling:
+        ps = torch.sigmoid(outputs_transferred.feasibility_logit / SCALING_FEASIBILITY) # (M, batchsize)
+    else:
+        ps = torch.sigmoid(outputs_transferred.feasibility_logit)  # (M, batchsize)
     p_means = ps.mean(dim=0) # (batchsize,)
     feasibility_total_uncertainty = bernoulli_entropy(p_means) # (batchsize,)
     feasibility_aleatoric = bernoulli_entropy(ps).mean(dim=0) # (batchsize,)
