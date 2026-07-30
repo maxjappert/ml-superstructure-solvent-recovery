@@ -172,10 +172,11 @@ def train_ensemble(train_loader, val_loader, M=5, num_epochs=EPOCHS,
                                         'bs': config.BATCH_SIZE, 'M': M},
                             'val_loss': best_val}, checkpoint_filename)
         else:
-            counter_no_improvement =+ 1
+            counter_no_improvement += 1
 
         # if the ensemble hasn't improved in ten iterations, we move on
         if counter_no_improvement == 10:
+            print('Converged as no validation improvement has been recognised in ten epochs.')
             break
 
         scheduler.step()
