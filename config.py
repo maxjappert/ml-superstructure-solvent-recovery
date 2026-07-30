@@ -2,9 +2,9 @@ import torch
 
 SEED = 42
 EPOCHS = 1000
-BATCH_SIZE = 32
+BATCH_SIZE = 512
 LR = 3e-4
-WEIGHT_DECAY = 0.01
+WEIGHT_DECAY = 1e-5
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else 'cpu')
 NUM_WORKERS = 20
 VAL_BATCH_SIZE = 262144

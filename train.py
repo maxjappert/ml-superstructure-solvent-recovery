@@ -253,7 +253,7 @@ def train_epoch(model, loader, optimizer):
 # --- entry point --------------------------------------------------------------
 
 def main():
-    train_set = Dataset('train_large')
+    train_set = Dataset('train')
     val_set = Dataset('val')
     train_loader = make_loader(train_set, shuffle=True)
     val_loader = make_loader(val_set, shuffle=False)
