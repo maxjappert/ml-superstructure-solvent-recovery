@@ -87,11 +87,11 @@ def acquisition_function(ensemble: list, datapool_set: Dataset, len_train_set: i
     return datapool_set
 
 def main():
-    name_input = '5_ensemble_20260729_small.pt'
+    name_input = '5_ensemble_20260729_large.pt'
 
     ensemble = load_ensemble(name_input)
 
-    dataset_train = Dataset('train_small')
+    dataset_train = Dataset('train')
     dataset_val = Dataset('val')
 
     len_original_training_data = len(dataset_train)

@@ -16,10 +16,10 @@ ACTIVE_BATCH_SIZE = 32
 ACTIVE_WEIGHT_DECAY = 0.01
 ACTIVE_NUM_DATA_POOL = 1000000
 ACTIVE_NEW_DATA_FRAC = 0.1
-ACTIVE_NUM_EPOCHS = 20# 60
+ACTIVE_NUM_EPOCHS = 60
 ACTIVE_EPSILON_EXPLORATION = 0.5
 
-FLAGSHIP_MODEL_NAME = '5_ensemble_besteval_240726.pt' # 5_ensemble_best_230726_4.pt_post.pt'
+FLAGSHIP_MODEL_NAME = '5_ensemble_20260729_large.pt_post.pt' # '5_ensemble_besteval_240726.pt' # 5_ensemble_best_230726_4.pt_post.pt'
 
 loss_scalar_fractions = 1
 loss_scalar_cost = 1

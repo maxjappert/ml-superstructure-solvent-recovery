@@ -31,10 +31,19 @@ class Dataset(torch.utils.data.Dataset):
                          'solvent2_hvap',
                          'solvent2_cp',
                          'solvent2_logP',
-                         'solid_removal_idx',
-                         'recovery_idx',
-                         'purification_idx',
-                         'refinement_idx',]]
+                         'solid_removal_sedimentation',
+                         'solid_removal_centrifugation',
+                         'solid_removal_filtration',
+                         'recovery_distillation',
+                         'recovery_pervaporation',
+                         'recovery_atpe',
+                         'purification_distillation',
+                         'purification_pervaporation',
+                         'purification_ultrafiltration',
+                         'refinement_distillation',
+                         'refinement_pervaporation',
+                         'refinement_ultrafiltration',
+                         'refinement_microfiltration']]
         #]
 
         output_df = df[['feasible',
@@ -45,11 +54,12 @@ class Dataset(torch.utils.data.Dataset):
         self.X = torch.tensor(input_df.values, dtype=torch.float32)
         self.y = torch.tensor(output_df.values, dtype=torch.float32)
 
-        self.standardiser_X = Standardiser(self.X)
+        self.standardiser_X = Standardiser(self.X[:, :-13])
 
         # self.standardiser_y = Standardizer(self.y[:,3:5])
 
-        self.X = self.standardiser_X.transform(self.X)
+        self.X[:, :-13] = self.standardiser_X.transform(self.X[:, :-13])
+
         # self.y[:,3:5] = self.standardiser_y.transform(self.y[:,3:5])
 
     def __len__(self):

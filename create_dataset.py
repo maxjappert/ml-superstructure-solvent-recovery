@@ -5,6 +5,9 @@ import random
 import sys
 from concurrent.futures import ProcessPoolExecutor
 
+import torch
+import torch.nn.functional as F
+
 import pandas as pd
 
 from solvent_recovery import list_solvents, list_salts, compute
@@ -40,10 +43,19 @@ COLUMNS = ['target_name',
            'solvent2_hvap',
            'solvent2_cp',
            'solvent2_logP',
-           'solid_removal_idx',
-           'recovery_idx',
-           'purification_idx',
-           'refinement_idx',
+           'solid_removal_sedimentation',
+           'solid_removal_centrifugation',
+           'solid_removal_filtration',
+           'recovery_distillation',
+           'recovery_pervaporation',
+           'recovery_atpe',
+           'purification_distillation',
+           'purification_pervaporation',
+           'purification_ultrafiltration',
+           'refinement_distillation',
+           'refinement_pervaporation',
+           'refinement_ultrafiltration',
+           'refinement_microfiltration',
            'feasible',
            'cost_usd_per_kg_recovered',
            'cost_usd_per_year',
@@ -189,6 +201,11 @@ def create_dataset(type: str, size: int, seed: int, skip_prob=0.5,
 
                         log_alphas = log_alphas_pairwise(stream_kgph, props, temperature_C + 273.15)
 
+                        one_hot_solid_removal = F.one_hot(torch.tensor(idxs['solids_removal'], dtype=torch.long), num_classes=4).squeeze()
+                        one_hot_recovery = F.one_hot(torch.tensor(idxs['recovery'], dtype=torch.long), num_classes=4).squeeze()
+                        one_hot_purification = F.one_hot(torch.tensor(idxs['purification'], dtype=torch.long), num_classes=4).squeeze()
+                        one_hot_refinement = F.one_hot(torch.tensor(idxs['refinement'], dtype=torch.long), num_classes=5).squeeze()
+
                         rows.append([names['target'],
                                      names['solvent2'],
                                      names['salt'],
@@ -217,10 +234,19 @@ def create_dataset(type: str, size: int, seed: int, skip_prob=0.5,
                                      props['solvent2'].Hvap,
                                      props['solvent2'].Cp,
                                      props['solvent2'].logP,
-                                     idxs['solids_removal'],
-                                     idxs['recovery'],
-                                     idxs['purification'],
-                                     idxs['refinement'],
+                                     one_hot_solid_removal[1].item(),
+                                     one_hot_solid_removal[2].item(),
+                                     one_hot_solid_removal[3].item(),
+                                     one_hot_recovery[1].item(),
+                                     one_hot_recovery[2].item(),
+                                     one_hot_recovery[3].item(),
+                                     one_hot_purification[1].item(),
+                                     one_hot_purification[2].item(),
+                                     one_hot_purification[3].item(),
+                                     one_hot_refinement[1].item(),
+                                     one_hot_refinement[2].item(),
+                                     one_hot_refinement[3].item(),
+                                     one_hot_refinement[4].item(),
                                      int(feasible),
                                      r.cost_usd_per_kg_recovered if feasible else 0,
                                      # NaN implies an infeasible solution, in the output we'll encode this as -1

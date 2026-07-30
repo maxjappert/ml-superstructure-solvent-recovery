@@ -15,7 +15,7 @@ from config import DEVICE, loss_scalar_fractions, loss_scalar_cost, BATCH_SIZE, 
     PRED_METRICS, SCALING_RECOVERY, SCALING_PURITY, SCALING_COST, SCALING_FEASIBILITY
 from datasets import Dataset
 from models import Model, LossBreakdown, get_ensemble_predictions, StreamComposition, print_model_output_comparison, \
-    load_ensemble, ModelDistributionOutput, get_single_prediction, get_losses, transfer_ensemble_losses
+    load_ensemble, ModelDistributionOutput, get_losses, transfer_ensemble_losses
 from solvent_recovery import compute
 from solvent_recovery.properties import get_solvent_props, get_water_props, get_salt_props, get_solids_props, \
     get_extractant_props
@@ -229,120 +229,25 @@ def manual_eval(models_name,
     }
 
 
-@torch.no_grad()
-def matrix_eval(model,
-                props,
-                dataset,
-                solvent_target_flow,
-                solvent2_flow,
-                water_flow,
-                salt_flow,
-                solids_flow,
-                solid_removal_idxs,
-                recovery_idxs,
-                purification_idxs,
-                refinement_idxs,
-                temperature_C=25):
-
-    stream_kgph = {
-        "target": solvent_target_flow,
-        "solvent2": solvent2_flow,
-        "water": water_flow,
-        "salt": salt_flow,
-        "solids": solids_flow
-    }
-
-    n_components = 1
-    if stream_kgph['solvent2'] > 0:
-        n_components += 1
-    if stream_kgph['salt'] > 0:
-        n_components += 1
-    if stream_kgph['water'] > 0:
-        n_components += 1
-    if stream_kgph['solids'] > 0:
-        n_components += 1
-
-    model_outputs = torch.zeros((4, 4, 4, 5, 4))
-    ground_truths = torch.zeros((4, 4, 4, 5, 4))
-
-    for solid_removal_idx in solid_removal_idxs:
-        for recovery_idx in recovery_idxs:
-            for purification_idx in purification_idxs:
-                for refinement_idx in refinement_idxs:
-                    r = compute(
-                        solvent_target_name=props['target'].name,
-                        solvent2_name=props['solvent2'].name,
-                        salt_name=props['salt'].name,
-                        temperature_C=temperature_C,
-                        solvent_target_kgph=stream_kgph['target'],
-                        solvent2_kgph=stream_kgph['solvent2'],
-                        water_kgph=stream_kgph['water'],
-                        salt_kgph=stream_kgph['salt'],
-                        solids_kgph=stream_kgph['solids'],
-                        idx_solids_removal=solid_removal_idx,
-                        idx_recovery=recovery_idx,
-                        idx_purification=purification_idx,
-                        idx_refinement=refinement_idx,
-                    )
-
-                    ground_truths[solid_removal_idx,recovery_idx,purification_idx,refinement_idx, 0] = not math.isnan(r.cost_usd_per_kg_recovered)
-                    ground_truths[solid_removal_idx, recovery_idx, purification_idx, refinement_idx, 1] = r.target_recovery
-                    ground_truths[solid_removal_idx, recovery_idx, purification_idx, refinement_idx, 2] = r.target_purity
-                    ground_truths[solid_removal_idx, recovery_idx, purification_idx, refinement_idx, 3] = r.cost_usd_per_kg_recovered
-
-                    log_alphas = log_alphas_pairwise(stream_kgph, props, temperature_C + 273.15)
-
-                    tensor_input = torch.tensor([stream_kgph['target'],
-                                             stream_kgph['solvent2'],
-                                             stream_kgph['water'],
-                                             stream_kgph['salt'],
-                                             stream_kgph['solids'],
-                                             temperature_C,
-                                             props['target'].MW,
-                                             props['target'].rho,
-                                             props['target'].Tb, # in kelvin, we could convert
-                                             props['target'].Hvap,
-                                             props['target'].Cp,
-                                             props['target'].logP,
-                                             log_alphas['target']['solvent2'],
-                                             log_alphas['target']['water'],
-                                             props['solvent2'].MW,
-                                             props['solvent2'].rho,
-                                             props['solvent2'].Tb, props['solvent2'].Hvap,
-                                             props['solvent2'].Cp,
-                                             props['solvent2'].logP,
-                                             solid_removal_idx,
-                                             recovery_idx,
-                                             purification_idx,
-                                             refinement_idx])
-
-                    tensor_input = dataset.standardiser_X.transform(tensor_input)
-                    model_output = model(tensor_input)
-
-                    model_outputs[solid_removal_idx, recovery_idx,purification_idx,refinement_idx, 0] = torch.sigmoid(model_output.feasibility_logit).item() > 0.5
-                    model_outputs[solid_removal_idx, recovery_idx, purification_idx, refinement_idx, 1] = model_output.recovery_mu.item()
-                    model_outputs[solid_removal_idx, recovery_idx, purification_idx, refinement_idx, 2] = model_output.purity_mu.item()
-                    model_outputs[solid_removal_idx, recovery_idx, purification_idx, refinement_idx, 3] = model_output.cost_per_kg_mu.item()
-
-
-    return {
-        'predicted': model_outputs,
-        'true': ground_truths,
-    }
-
 def main():
 
-    create_calibration_plot_binary_classification(FLAGSHIP_MODEL_NAME, Dataset('calibration'), n_bins=80)
-    # create_regression_calibration_plot(FLAGSHIP_MODEL_NAME, Dataset('calibration'), 'cost_per_kg')
+    # create_calibration_plot_binary_classification(FLAGSHIP_MODEL_NAME, Dataset('calibration'), n_bins=80)
+    # create_regression_calibration_plot(FLAGSHIP_MODEL_NAME, Dataset('calibration'), 'recovery')
 
-    # stream = StreamComposition(target_name='2-methyltetrahydrofuran',
-    #                            target_kgph=34,
-    #                            solvent2_name='acetone',
-    #                            solvent2_kgph=0,
-    #                            salt_name='sodium bicarbonate',
-    #                            salt_kgph=0,
-    #                            water_kgph=0,
-    #                            solids_kgph=0)
+    stream = StreamComposition(target_name='2-methyltetrahydrofuran',
+                               target_kgph=34,
+                               solvent2_name='acetone',
+                               solvent2_kgph=0,
+                               salt_name='sodium bicarbonate',
+                               salt_kgph=0,
+                               water_kgph=0,
+                               solids_kgph=0)
+
+    print(get_ensemble_predictions(load_ensemble(FLAGSHIP_MODEL_NAME),
+                             stream,
+                             23,
+                             [0, 0, 0, 0]))
+
     #
     # ensemble_name = '5_ensemble_best_170726.pt'
     # single_name = 'single_best_170726.pt'
@@ -354,11 +259,11 @@ def main():
     # output = manual_eval('single_best_170726.pt', stream, 0, 0, 0, 0, model_type='single')
 
 
-    print(evaluate_ensemble_from_file('5_ensemble_20260727_142131.pt_post.pt', test_loader))
-    print(evaluate_ensemble_from_file('5_ensemble_besteval_240726.pt', test_loader))
-    print(evaluate_ensemble_from_file('5_ensemble_best_230726_2.pt_post.pt', test_loader))
-    print(evaluate_ensemble_from_file('5_ensemble_best_230726.pt', test_loader))
-    print(evaluate_ensemble_from_file('5_ensemble_best_220726.pt', test_loader))
+    # print(evaluate_ensemble_from_file('5_ensemble_besteval_240726.pt', test_loader))
+    print(evaluate_ensemble_from_file('5_ensemble_20260729_small_e1.pt_post.pt', test_loader))
+    print(evaluate_ensemble_from_file('5_ensemble_20260729_small.pt_post.pt', test_loader))
+    print(evaluate_ensemble_from_file('5_ensemble_20260729_large.pt_post.pt', test_loader))
+    print(evaluate_ensemble_from_file('5_ensemble_20260729_large.pt', test_loader))
     # print(evaluate(models.load_model(single_name), DataLoader(Dataset('test'), batch_size=VAL_BATCH_SIZE)).div_by(len(Dataset('test'))))
 
 if __name__ == '__main__':

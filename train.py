@@ -85,6 +85,7 @@ def train_ensemble(train_loader, val_loader, M=5, num_epochs=EPOCHS,
     except ValueError:
         return ensemble, [], []
 
+    counter_no_improvement = 0
 
     if USE_COMPILE:
         vmapped_losses = torch.compile(vmapped_losses, dynamic=False)
@@ -159,6 +160,7 @@ def train_ensemble(train_loader, val_loader, M=5, num_epochs=EPOCHS,
         # NB: checkpointing used to live inside `if verbose:`, so silent runs
         # never saved anything. Moved out.
         if mean_val_loss < best_val:
+            counter_no_improvement = 0
             best_val = mean_val_loss
             best_ensemble = ensemble
             if verbose:
@@ -169,6 +171,12 @@ def train_ensemble(train_loader, val_loader, M=5, num_epochs=EPOCHS,
                             'hparams': {'seed': config.SEED, 'lr': config.LR,
                                         'bs': config.BATCH_SIZE, 'M': M},
                             'val_loss': best_val}, checkpoint_filename)
+        else:
+            counter_no_improvement =+ 1
+
+        # if the ensemble hasn't improved in ten iterations, we move on
+        if counter_no_improvement == 10:
+            break
 
         scheduler.step()
 
@@ -244,7 +252,7 @@ def train_epoch(model, loader, optimizer):
 # --- entry point --------------------------------------------------------------
 
 def main():
-    train_set = Dataset('train_small')
+    train_set = Dataset('train_large')
     val_set = Dataset('val')
     train_loader = make_loader(train_set, shuffle=True)
     val_loader = make_loader(val_set, shuffle=False)

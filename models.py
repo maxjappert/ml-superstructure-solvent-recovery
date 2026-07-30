@@ -181,7 +181,7 @@ class Model(nn.Module):
     def __init__(self, dropout_rate=0.2):
         super().__init__()
 
-        self.net_shared = nn.Sequential(nn.Linear(24, 128),
+        self.net_shared = nn.Sequential(nn.Linear(33, 128),
                                  nn.ReLU(),
                                  nn.Dropout(dropout_rate),
                                  nn.Linear(128, 256),
@@ -326,7 +326,7 @@ def get_ensemble_predictions_from_tensor(ensemble, input_tensor, scaling=True):
 
     for model in ensemble:
         model.eval()
-        raw_outputs.append(model(input_tensor.to(DEVICE)))
+        raw_outputs.append(model(input_tensor.unsqueeze(dim=0).to(DEVICE)))
 
     outputs_transferred = transfer_ensemble_model_outputs(raw_outputs)
 
@@ -384,6 +384,11 @@ def get_ensemble_predictions_from_tensor(ensemble, input_tensor, scaling=True):
 def convert_data_to_input_tensor(stream: StreamComposition, temperature_C: float, superstructure_idxs, data_name='train'):
     log_alphas = log_alphas_pairwise(stream.get_kgph_dict(), stream.get_props_dict(), temperature_C + 273.15)
 
+    one_hot_solid_removal = F.one_hot(torch.tensor(superstructure_idxs[0], dtype=torch.long), num_classes=4).squeeze()
+    one_hot_recovery = F.one_hot(torch.tensor(superstructure_idxs[1], dtype=torch.long), num_classes=4).squeeze()
+    one_hot_purification = F.one_hot(torch.tensor(superstructure_idxs[2], dtype=torch.long), num_classes=4).squeeze()
+    one_hot_refinement = F.one_hot(torch.tensor(superstructure_idxs[3], dtype=torch.long), num_classes=5).squeeze()
+
     input_tensor = torch.tensor([stream.target_solvent['kgph'],
                                  stream.solvent2['kgph'],
                                  stream.water['kgph'],
@@ -404,12 +409,24 @@ def convert_data_to_input_tensor(stream: StreamComposition, temperature_C: float
                                  stream.solvent2['props'].Hvap,
                                  stream.solvent2['props'].Cp,
                                  stream.solvent2['props'].logP,
-                                 superstructure_idxs[0],
-                                superstructure_idxs[1],
-                                superstructure_idxs[2],
-                                superstructure_idxs[3]])
+                                 one_hot_solid_removal[1].item(),
+                                 one_hot_solid_removal[2].item(),
+                                 one_hot_solid_removal[3].item(),
+                                 one_hot_recovery[1].item(),
+                                 one_hot_recovery[2].item(),
+                                 one_hot_recovery[3].item(),
+                                 one_hot_purification[1].item(),
+                                 one_hot_purification[2].item(),
+                                 one_hot_purification[3].item(),
+                                 one_hot_refinement[1].item(),
+                                 one_hot_refinement[2].item(),
+                                 one_hot_refinement[3].item(),
+                                 one_hot_refinement[4].item()])
 
-    return Dataset(data_name).standardiser_X.transform(input_tensor)
+    scaled_input_tensor = input_tensor
+    input_tensor[:-13] = Dataset(data_name).standardiser_X.transform(input_tensor[:-13])
+
+    return scaled_input_tensor
 
 
 def get_ensemble_predictions(ensemble: list, stream: StreamComposition, temperature_C: float, superstructure_idxs, data_name='train'):
