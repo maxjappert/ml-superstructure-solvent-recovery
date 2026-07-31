@@ -6,13 +6,14 @@ import sys
 import numpy as np
 import torch
 import torch.nn.functional as F
+from PIL import EpsImagePlugin
 from matplotlib import pyplot as plt
 from torch.nn import Module
 from torch.utils.data import DataLoader
 
 import models
 from config import DEVICE, loss_scalar_fractions, loss_scalar_cost, BATCH_SIZE, VAL_BATCH_SIZE, FLAGSHIP_MODEL_NAME, \
-    PRED_METRICS, SCALING_RECOVERY, SCALING_PURITY, SCALING_COST, SCALING_FEASIBILITY
+    PRED_METRICS, SCALING_RECOVERY, SCALING_PURITY, SCALING_COST, SCALING_FEASIBILITY, eps
 from dataset_torch import Dataset
 from models import Model, LossBreakdown, get_ensemble_predictions, StreamComposition, print_model_output_comparison, \
     load_ensemble, ModelDistributionOutput, get_losses, transfer_ensemble_losses
@@ -136,46 +137,32 @@ def create_calibration_plot_binary_classification(ensemble_name, dataset, n_bins
     probs_scaled = y_hat_scaled.feasibility['dist'].probs.detach().cpu()
     x, y = x.cpu(), y.cpu()
 
-    bins_y_unscaled = []
-    bins_y_scaled = []
-    bins_y_hat_unscaled = []
-    bins_y_hat_scaled = []
-    bins_mean_predicted_unscaled = []
-    bins_mean_predicted_scaled = []
-    boundaries = np.linspace(0, 1, n_bins+1)
+    def calibration_bins(probs, targets, boundaries):
+        probs = np.asarray(probs).ravel()
+        targets = np.asarray(targets).ravel()
+        # bin index per sample; right edge inclusive for the last bin
+        idx = np.clip(np.digitize(probs, boundaries) - 1, 0, len(boundaries) - 2)
+        mean_pred, frac_pos = [], []
+        for i in range(len(boundaries) - 1):
+            mask = idx == i
+            if mask.sum() == 0:
+                continue  # skip empty bins instead of producing NaN
+            mean_pred.append(probs[mask].mean())
+            frac_pos.append(targets[mask].mean())
+        return mean_pred, frac_pos
 
-    print(len(probs_unscaled))
-
-    empirical_fraction_of_positives_unscaled = []
-    empirical_fraction_of_positives_scaled = []
-
-    for i in range(n_bins):
-        print(i)
-        bins_y_unscaled.append([])
-        bins_y_scaled.append([])
-        bins_y_hat_unscaled.append([])
-        bins_y_hat_scaled.append([])
-        for j in range(len(probs_unscaled)):
-            if boundaries[i] <= probs_unscaled[j] < boundaries[i+1]:
-                bins_y_unscaled[i].append( y[j,0].item())
-                bins_y_hat_unscaled[i].append(probs_unscaled[j])
-            if boundaries[i] <= probs_scaled[j] < boundaries[i+1]:
-                bins_y_scaled[i].append( y[j,0].item())
-                bins_y_hat_scaled[i].append(probs_scaled[j])
-
-        bins_mean_predicted_unscaled.append(np.mean(bins_y_hat_unscaled[i]))
-        empirical_fraction_of_positives_unscaled.append(np.array(bins_y_unscaled[i]).sum() / len(bins_y_unscaled[i]))
-
-        bins_mean_predicted_scaled.append(np.mean(bins_y_hat_scaled[i]))
-        empirical_fraction_of_positives_scaled.append(np.array(bins_y_scaled[i]).sum() / len(bins_y_scaled[i]))
+    boundaries = np.linspace(0, 1, n_bins + 1)
+    y0 = y[:, 0].numpy()
+    mp_u, fp_u = calibration_bins(probs_unscaled.numpy(), y0, boundaries)
+    mp_s, fp_s = calibration_bins(probs_scaled.numpy(), y0, boundaries)
 
     os.makedirs('plots', exist_ok=True)  # no error if it already exists
     os.makedirs(os.path.join('plots', ensemble_name), exist_ok=True)
 
     plt.figure(figsize=(5, 5))
     plt.plot([0, 1], [0, 1], 'k--', label='perfect')  # dotted diagonal
-    plt.scatter(bins_mean_predicted_unscaled, empirical_fraction_of_positives_unscaled, s=20, alpha=0.7, label='model w/o scaling')
-    plt.scatter(bins_mean_predicted_scaled, empirical_fraction_of_positives_scaled, s=20, alpha=0.7, label='model w/ scaling')
+    plt.scatter(mp_u, fp_u, s=20, alpha=0.7, label='model w/o scaling')
+    plt.scatter(mp_s, fp_s, s=20, alpha=0.7, label='model w/ scaling')
     plt.xlabel('mean predicted probability $\\hat{p}$')
     plt.ylabel('observed positive fraction')
     plt.title(f'feasibility calibration with $\\tau = {SCALING_FEASIBILITY.item():.1f}$')
@@ -235,7 +222,7 @@ def main():
     create_regression_calibration_plot(FLAGSHIP_MODEL_NAME, dataset_calibration, 'recovery')
     create_regression_calibration_plot(FLAGSHIP_MODEL_NAME, dataset_calibration, 'purity')
     create_regression_calibration_plot(FLAGSHIP_MODEL_NAME, dataset_calibration, 'cost_per_kg')
-    create_calibration_plot_binary_classification(FLAGSHIP_MODEL_NAME, dataset_calibration, n_bins=20)
+    create_calibration_plot_binary_classification(FLAGSHIP_MODEL_NAME, dataset_calibration, n_bins=30)
 
     stream = StreamComposition(target_name='2-methyltetrahydrofuran',
                                target_kgph=34,

@@ -33,7 +33,7 @@ PRED_METRICS = {
     'cost_per_kg': 3
 }
 
-SCALING_FEASIBILITY = torch.Tensor([1]).to(DEVICE)
-SCALING_RECOVERY = torch.Tensor([1]).to(DEVICE)
-SCALING_PURITY = torch.Tensor([1]).to(DEVICE)
-SCALING_COST = torch.Tensor([1]).to(DEVICE)
+SCALING_FEASIBILITY = torch.Tensor([0.8]).to(DEVICE)
+SCALING_RECOVERY = torch.Tensor([0.5]).to(DEVICE)
+SCALING_PURITY = torch.Tensor([0.5]).to(DEVICE)
+SCALING_COST = torch.Tensor([0.5]).to(DEVICE)

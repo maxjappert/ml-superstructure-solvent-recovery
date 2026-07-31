@@ -364,37 +364,42 @@ def get_ensemble_predictions_from_tensor(ensemble, input_tensor, scaling=True):
     feasibility_epistemic = feasibility_total_uncertainty - feasibility_aleatoric # (batchsize,)
 
     # formulas from Lakshminarayanan et al. (2017)
-    recovery_epistemic = outputs_transferred.recovery_mu.var(dim=0, correction=0)
-    recovery_aleatoric = outputs_transferred.recovery_logvar.exp().mean(dim=0)
+    if scaling:
+        recovery_epistemic = outputs_transferred.recovery_mu.var(dim=0, correction=0) * SCALING_RECOVERY
+        recovery_aleatoric = outputs_transferred.recovery_logvar.exp().mean(dim=0) * SCALING_RECOVERY
+    else:
+        recovery_epistemic = outputs_transferred.recovery_mu.var(dim=0, correction=0)
+        recovery_aleatoric = outputs_transferred.recovery_logvar.exp().mean(dim=0)
+
     recovery_var = recovery_epistemic + recovery_aleatoric
     recovery_mu = outputs_transferred.recovery_mu.mean(dim=0) # (batchsize,)
-    if scaling:
-        recovery_dist = torch.distributions.Normal(recovery_mu, recovery_var.sqrt() * SCALING_RECOVERY.sqrt())
-    else:
-        recovery_dist = torch.distributions.Normal(recovery_mu, recovery_var.sqrt())
+    recovery_dist = torch.distributions.Normal(recovery_mu, recovery_var.sqrt())
 
     # The paper contains the following formula, which is less numerically stable:
     # recovery_var = ((outputs_transferred.recovery_logvar.exp()
     #                    + torch.pow(outputs_transferred.recovery_mu, 2)).mean(dim=0)
     #                    - torch.pow(recovery_mu, 2)) # (batchsize,)
 
-    purity_epistemic = outputs_transferred.purity_mu.var(dim=0, correction=0)
-    purity_aleatoric = outputs_transferred.purity_logvar.exp().mean(dim=0)
+    if scaling:
+        purity_epistemic = outputs_transferred.purity_mu.var(dim=0, correction=0) * SCALING_PURITY
+        purity_aleatoric = outputs_transferred.purity_logvar.exp().mean(dim=0) * SCALING_PURITY
+    else:
+        purity_epistemic = outputs_transferred.purity_mu.var(dim=0, correction=0)
+        purity_aleatoric = outputs_transferred.purity_logvar.exp().mean(dim=0)
     purity_mu = outputs_transferred.purity_mu.mean(dim=0) # (batchsize,)
     purity_var = purity_epistemic + purity_aleatoric
-    if scaling:
-        purity_dist = torch.distributions.Normal(purity_mu, purity_var.sqrt() * SCALING_PURITY.sqrt())
-    else:
-        purity_dist = torch.distributions.Normal(purity_mu, purity_var.sqrt())
+    purity_dist = torch.distributions.Normal(purity_mu, purity_var.sqrt())
 
-    cost_per_kg_epistemic = outputs_transferred.cost_per_kg_mu.var(dim=0, correction=0)
-    cost_per_kg_aleatoric = outputs_transferred.cost_per_kg_logvar.exp().mean(dim=0)
+    if scaling:
+        cost_per_kg_epistemic = outputs_transferred.cost_per_kg_mu.var(dim=0, correction=0) * SCALING_COST
+        cost_per_kg_aleatoric = outputs_transferred.cost_per_kg_logvar.exp().mean(dim=0) * SCALING_COST
+    else:
+        cost_per_kg_epistemic = outputs_transferred.cost_per_kg_mu.var(dim=0, correction=0)
+        cost_per_kg_aleatoric = outputs_transferred.cost_per_kg_logvar.exp().mean(dim=0)
     cost_per_kg_mu = outputs_transferred.cost_per_kg_mu.mean(dim=0) # (batchsize,)
     cost_per_kg_var = cost_per_kg_epistemic + cost_per_kg_aleatoric
-    if scaling:
-        cost_per_kg_dist = torch.distributions.Normal(cost_per_kg_mu, cost_per_kg_var.sqrt() * SCALING_COST.sqrt())
-    else:
-        cost_per_kg_dist = torch.distributions.Normal(cost_per_kg_mu, cost_per_kg_var.sqrt())
+    cost_per_kg_dist = torch.distributions.Normal(cost_per_kg_mu, cost_per_kg_var.sqrt())
+
 
     return ModelDistributionOutput(feasibility={'dist': torch.distributions.Bernoulli(p_means),
                                                 'epistemic': feasibility_epistemic,

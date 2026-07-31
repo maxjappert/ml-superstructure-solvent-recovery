@@ -19,10 +19,6 @@ ENV/
 *.ipynb_checkpoints
 
 # PyTorch
-*.pt
-*.pth
-*.ckpt
-*.safetensors
 checkpoints/
 runs/
 lightning_logs/
