@@ -174,7 +174,7 @@ def train_ensemble(train_loader, val_loader, M=5, num_epochs=EPOCHS,
         else:
             counter_no_improvement += 1
 
-        # if the ensemble hasn't improved in ten iterations, we move on
+        # if the ensemble hasn't improved in ten iterations, we consider it to have converged
         if counter_no_improvement == 10:
             print('Converged as no validation improvement has been recognised in ten epochs.')
             break
@@ -182,48 +182,6 @@ def train_ensemble(train_loader, val_loader, M=5, num_epochs=EPOCHS,
         scheduler.step()
 
     return best_ensemble, train_losses_list, val_losses_list
-
-
-# --- single model -------------------------------------------------------------
-
-def train_single(train_loader, val_loader):
-    model = Model().to(DEVICE)
-    if USE_COMPILE:
-        model = torch.compile(model)
-
-    optimiser = torch.optim.AdamW(model.parameters(), lr=config.LR,
-                                  weight_decay=config.WEIGHT_DECAY)
-
-    checkpoint_filename = f"single_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.pt"
-
-    train_losses_list = []
-    val_losses_list = []
-
-    print(f'started training {checkpoint_filename}')
-
-    best_val = float("inf")
-    for epoch in range(EPOCHS):
-        train_losses = train_epoch(model, train_loader, optimiser)
-        val_losses = evaluate(model, val_loader)
-        print(f'Epoch {epoch + 1}/{EPOCHS}')
-        print(compare_dicts_numerical(
-            train_losses.detached_and_normalised_dict(len(train_loader.dataset)),
-            val_losses.detached_and_normalised_dict(len(val_loader.dataset)),
-            'Train', 'Validation'))
-
-        if val_losses.total.item() < best_val:
-            best_val = val_losses.total.item()
-            # unwrap the compile wrapper so keys stay clean
-            raw_model = getattr(model, '_orig_mod', model)
-            torch.save({'model_state_dict': raw_model.state_dict(),
-                        'optimiser_state_dict': optimiser.state_dict(),
-                        'epoch': epoch,
-                        'hparams': {'seed': config.SEED, 'lr': config.LR,
-                                    'bs': config.BATCH_SIZE},
-                        'val_loss': best_val}, checkpoint_filename)
-
-        train_losses_list.append(train_losses.detached_and_normalised(len(train_loader.dataset)))
-        val_losses_list.append(val_losses.detached_and_normalised(len(val_loader.dataset)))
 
 
 def train_epoch(model, loader, optimizer):
@@ -253,19 +211,12 @@ def train_epoch(model, loader, optimizer):
 # --- entry point --------------------------------------------------------------
 
 def main():
-    train_set = Dataset('train')
+    train_set = Dataset('train_large')
     val_set = Dataset('val')
     train_loader = make_loader(train_set, shuffle=True)
     val_loader = make_loader(val_set, shuffle=False)
 
-    training_type = sys.argv[1]
-    if training_type == 'ensemble':
-        train_ensemble(train_loader, val_loader)
-    elif training_type == 'single':
-        train_single(train_loader, val_loader)
-    else:
-        print('Unknown training type')
-        sys.exit(-1)
+    train_ensemble(train_loader, val_loader)
 
 
 if __name__ == '__main__':

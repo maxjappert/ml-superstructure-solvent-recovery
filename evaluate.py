@@ -195,8 +195,7 @@ def manual_eval(models_name,
                 recovery_idx,
                 purification_idx,
                 refinement_idx,
-                temperature_C=25,
-                model_type='ensemble'):
+                temperature_C=25):
 
     r = compute(
         solvent_target_name=stream.target_solvent['props'].name,
@@ -231,8 +230,12 @@ def manual_eval(models_name,
 
 def main():
 
-    # create_calibration_plot_binary_classification(FLAGSHIP_MODEL_NAME, Dataset('calibration'), n_bins=80)
-    # create_regression_calibration_plot(FLAGSHIP_MODEL_NAME, Dataset('calibration'), 'recovery')
+    dataset_calibration = Dataset('calibration')
+
+    create_regression_calibration_plot(FLAGSHIP_MODEL_NAME, dataset_calibration, 'recovery')
+    create_regression_calibration_plot(FLAGSHIP_MODEL_NAME, dataset_calibration, 'purity')
+    create_regression_calibration_plot(FLAGSHIP_MODEL_NAME, dataset_calibration, 'cost_per_kg')
+    create_calibration_plot_binary_classification(FLAGSHIP_MODEL_NAME, dataset_calibration, n_bins=20)
 
     stream = StreamComposition(target_name='2-methyltetrahydrofuran',
                                target_kgph=34,
@@ -248,23 +251,10 @@ def main():
                              23,
                              [0, 0, 0, 0]))
 
-    #
-    # ensemble_name = '5_ensemble_best_170726.pt'
-    # single_name = 'single_best_170726.pt'
-    #
     test_loader = DataLoader(Dataset('test'), batch_size=VAL_BATCH_SIZE)
-    #
-    # print(manual_eval(ensemble_name, stream, 2, 1, 0, 0, model_type='ensemble'))
-    # print(manual_eval(single_name, stream, 2, 1, 0, 0, model_type='single'))
-    # output = manual_eval('single_best_170726.pt', stream, 0, 0, 0, 0, model_type='single')
+    print(manual_eval(FLAGSHIP_MODEL_NAME, stream, 2, 1, 0, 0))
 
-
-    # print(evaluate_ensemble_from_file('5_ensemble_besteval_240726.pt', test_loader))
-    print(evaluate_ensemble_from_file('5_ensemble_20260729_small_e1.pt_post.pt', test_loader))
-    print(evaluate_ensemble_from_file('5_ensemble_20260729_small.pt_post.pt', test_loader))
-    print(evaluate_ensemble_from_file('5_ensemble_20260729_large.pt_post.pt', test_loader))
-    print(evaluate_ensemble_from_file('5_ensemble_20260729_large.pt', test_loader))
-    # print(evaluate(models.load_model(single_name), DataLoader(Dataset('test'), batch_size=VAL_BATCH_SIZE)).div_by(len(Dataset('test'))))
+    print(evaluate_ensemble_from_file(FLAGSHIP_MODEL_NAME, test_loader))
 
 if __name__ == '__main__':
     main()

@@ -347,7 +347,8 @@ def get_ensemble_predictions_from_tensor(ensemble, input_tensor, scaling=True):
 
     for model in ensemble:
         model.eval()
-        raw_outputs.append(model(input_tensor.unsqueeze(dim=0).to(DEVICE)))
+        formatted_input = input_tensor.unsqueeze(dim=0) if input_tensor.dim() == 1 else input_tensor
+        raw_outputs.append(model(formatted_input.to(DEVICE)))
 
     outputs_transferred = transfer_ensemble_model_outputs(raw_outputs)
 

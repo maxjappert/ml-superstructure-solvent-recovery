@@ -745,7 +745,7 @@ stream = StreamComposition(
 stage_kwargs = dict(zip(STAGE_KWARGS, stage_indices))
 
 try:
-    result = manual_eval(ensemble_name, stream, model_type="ensemble",
+    result = manual_eval(ensemble_name, stream,
                          temperature_C=temperature_C, **stage_kwargs)
 except Exception as exc:  # noqa: BLE001
     st.error(f"Ensemble evaluation failed.\n\n"
