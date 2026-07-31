@@ -8,9 +8,9 @@ import torch.nn.functional as F
 import config
 from config import DEVICE, loss_scalar_fractions, loss_scalar_cost, eps, SCALING_RECOVERY, SCALING_PURITY, SCALING_COST, SCALING_FEASIBILITY
 
-from datasets import Dataset
-from solvent_recovery.properties import get_solvent_props, get_salt_props, get_water_props, get_solids_props
-from solvent_recovery.units import log_alphas_pairwise
+from dataset_torch import Dataset
+from solvent_recovery_data_generator.properties import get_solvent_props, get_salt_props, get_water_props, get_solids_props
+from solvent_recovery_data_generator.units import log_alphas_pairwise
 
 @dataclass(frozen=False, slots=True)
 class ModelOutput:
@@ -182,22 +182,22 @@ class Model(nn.Module):
         super().__init__()
 
         self.net_shared = nn.Sequential(nn.Linear(33, 128),
-                                 nn.BatchNorm1d(128),
-                                 nn.ReLU(),
-                                 nn.Dropout(dropout_rate),
-                                 nn.Linear(128, 256),
-                                 nn.BatchNorm1d(256),
-                                 nn.ReLU(),
-                                 nn.Dropout(dropout_rate),
-                                 nn.Linear(256, 512),
-                                 nn.BatchNorm1d(512),
-                                 nn.ReLU())
+                                        nn.BatchNorm1d(128),
+                                        nn.ReLU(),
+                                        nn.Dropout(dropout_rate),
+                                        nn.Linear(128, 256),
+                                        nn.BatchNorm1d(256),
+                                        nn.ReLU(),
+                                        nn.Dropout(dropout_rate),
+                                        nn.Linear(256, 512),
+                                        nn.BatchNorm1d(512),
+                                        nn.ReLU())
 
         self.net_feasibility = nn.Sequential(nn.Linear(512, 512),
                                              nn.BatchNorm1d(512),
                                              nn.ReLU(),
                                              nn.Dropout(dropout_rate),
-            nn.Linear(512, 256),
+                                             nn.Linear(512, 256),
                                              nn.BatchNorm1d(256),
                                              nn.ReLU(),
                                              nn.Dropout(dropout_rate),
@@ -208,18 +208,18 @@ class Model(nn.Module):
                                              nn.Linear(128, 1),)
 
         self.net_fractions = nn.Sequential(nn.Linear(512, 512),
-                                             nn.BatchNorm1d(512),
-                                             nn.ReLU(),
-                                             nn.Dropout(dropout_rate),
+                                           nn.BatchNorm1d(512),
+                                           nn.ReLU(),
+                                           nn.Dropout(dropout_rate),
                                            nn.Linear(512, 256),
                                            nn.BatchNorm1d(256),
-                                             nn.ReLU(),
-                                             nn.Dropout(dropout_rate),
-                                             nn.Linear(256, 128),
-                                             nn.BatchNorm1d(128),
-                                             nn.ReLU(),
-                                             nn.Dropout(dropout_rate),
-                                             nn.Linear(128, 4))
+                                           nn.ReLU(),
+                                           nn.Dropout(dropout_rate),
+                                           nn.Linear(256, 128),
+                                           nn.BatchNorm1d(128),
+                                           nn.ReLU(),
+                                           nn.Dropout(dropout_rate),
+                                           nn.Linear(128, 4))
 
         self.net_cost = nn.Sequential(nn.Linear(512, 512),
                                              nn.BatchNorm1d(512),

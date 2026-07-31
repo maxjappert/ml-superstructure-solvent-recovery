@@ -13,13 +13,13 @@ from torch.utils.data import DataLoader
 import models
 from config import DEVICE, loss_scalar_fractions, loss_scalar_cost, BATCH_SIZE, VAL_BATCH_SIZE, FLAGSHIP_MODEL_NAME, \
     PRED_METRICS, SCALING_RECOVERY, SCALING_PURITY, SCALING_COST, SCALING_FEASIBILITY
-from datasets import Dataset
+from dataset_torch import Dataset
 from models import Model, LossBreakdown, get_ensemble_predictions, StreamComposition, print_model_output_comparison, \
     load_ensemble, ModelDistributionOutput, get_losses, transfer_ensemble_losses
-from solvent_recovery import compute
-from solvent_recovery.properties import get_solvent_props, get_water_props, get_salt_props, get_solids_props, \
+from solvent_recovery_data_generator import compute
+from solvent_recovery_data_generator.properties import get_solvent_props, get_water_props, get_salt_props, get_solids_props, \
     get_extractant_props
-from solvent_recovery.units import _alphas, log_alphas_pairwise
+from solvent_recovery_data_generator.units import _alphas, log_alphas_pairwise
 
 
 @torch.no_grad()

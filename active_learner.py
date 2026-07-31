@@ -11,7 +11,7 @@ from config import ACTIVE_LR, ACTIVE_WEIGHT_DECAY, ACTIVE_NUM_DATA_POOL, SEED, \
     NUM_WORKERS, VAL_BATCH_SIZE, ACTIVE_NUM_EPOCHS, DEVICE, ACTIVE_NEW_DATA_FRAC, BATCH_SIZE, ACTIVE_BATCH_SIZE, \
     ACTIVE_EPSILON_EXPLORATION
 from create_dataset import create_dataset, create_dataset_parallel
-from datasets import Dataset
+from dataset_torch import Dataset
 from evaluate import evaluate_ensemble_from_file, evaluate
 from models import Model, get_ensemble_predictions, StreamComposition, new_ensemble, \
     get_ensemble_predictions_from_tensor

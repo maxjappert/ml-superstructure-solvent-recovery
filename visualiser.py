@@ -57,8 +57,8 @@ MODEL_AVAILABLE = True
 IMPORT_ERROR = ""
 
 try:
-    from solvent_recovery.solvents import (list_solvents, list_salts,
-                                           SOLVENT_DATA, SALT_DATA)
+    from solvent_recovery_data_generator.solvents import (list_solvents, list_salts,
+                                                          SOLVENT_DATA, SALT_DATA)
 except Exception:
     # Fallback registry so the stream builder runs standalone.
     SOLVENT_DATA = {

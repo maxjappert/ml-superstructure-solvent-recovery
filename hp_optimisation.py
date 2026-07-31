@@ -7,7 +7,7 @@ import numpy as np
 from torch.utils.data import DataLoader
 
 from config import VAL_BATCH_SIZE, NUM_WORKERS
-from datasets import Dataset
+from dataset_torch import Dataset
 from train import train_ensemble
 
 

@@ -12,10 +12,10 @@ the (waste composition × pathway) state space.
 ## Usage
 
 ```python
-from solvent_recovery import compute, list_solvents, list_salts
+from solvent_recovery_data_generator import compute, list_solvents, list_salts
 
 r = compute(
-    solvent_target_name="isopropanol",   # or CAS, e.g. "67-63-0"
+    solvent_target_name="isopropanol",  # or CAS, e.g. "67-63-0"
     solvent2_name="ethanol",
     salt_name="sodium chloride",
     temperature_C=25,
@@ -24,10 +24,10 @@ r = compute(
     water_kgph=490,
     salt_kgph=0,
     solids_kgph=0,
-    idx_solids_removal=0,   # bypass
-    idx_recovery=2,         # pervaporation
-    idx_purification=3,     # ultrafiltration
-    idx_refinement=0,       # bypass
+    idx_solids_removal=0,  # bypass
+    idx_recovery=2,  # pervaporation
+    idx_purification=3,  # ultrafiltration
+    idx_refinement=0,  # bypass
 )
 cost, purity, recovery = r[:3]
 # r also carries: cost_usd_per_kg_recovered, feasible, path, cost_breakdown

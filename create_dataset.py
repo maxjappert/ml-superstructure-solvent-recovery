@@ -10,10 +10,10 @@ import torch.nn.functional as F
 
 import pandas as pd
 
-from solvent_recovery import list_solvents, list_salts, compute
-from solvent_recovery.properties import get_solvent_props, get_water_props, get_salt_props, get_solids_props, \
+from solvent_recovery_data_generator import list_solvents, list_salts, compute
+from solvent_recovery_data_generator.properties import get_solvent_props, get_water_props, get_salt_props, get_solids_props, \
     get_extractant_props
-from solvent_recovery.units import log_alphas_pairwise
+from solvent_recovery_data_generator.units import log_alphas_pairwise
 
 COLUMNS = ['target_name',
            'solvent2_name',

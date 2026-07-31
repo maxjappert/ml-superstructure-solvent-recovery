@@ -9,10 +9,10 @@ from torch.utils.data import DataLoader
 import config
 from config import DEVICE, SEED, BATCH_SIZE, NUM_WORKERS, EPOCHS
 
-from datasets import Dataset
+from dataset_torch import Dataset
 from evaluate import evaluate
 from models import get_losses, LossBreakdown, Model, new_ensemble, transfer_ensemble_losses
-from utils import compare_dicts_numerical, compare_dicts_strings
+from utils import compare_dicts_strings
 
 torch.manual_seed(SEED)
 
