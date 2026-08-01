@@ -21,7 +21,7 @@ uncertainty decomposition and active learning.
 Implemented using Python version 3.14.6. A standard CPU is sufficiently powerful for evaluation.
 
 ## Usage
-    python create_dataset.py [name] [size] [seed] 
+    python create_dataset.py [train/val/test/calibration] [size] [seed] 
     python train.py
     python evaluate.py
     streamlit run visualiser.py
@@ -33,7 +33,7 @@ The project directory contains the following files:
 - `config.py`: Specifies the hyperparameters, seed and settings for all the experiments.
 - `create_dataset.py`: The functions necessary for creating a dataset in the required format as `.csv`.
 - `dataset_torch.py`: Necessary code for converting the `.csv`-data to tensors that PyTorch can work with.
-- `evaluate.py`: Everything pertaining to the evaluation of a trained model and running experiments.
+- `evaluate.py`: Everything pertaining to the evaluation of a trained model and running experiments. Its main function reproduces many of the results in the paper.
 - `models.py`: Handles the model implementation and the conversion between different model output formats.
 - `train.py`: The train script and associated methods.
 - `solvent_recovery_data_generator/`: Contains the re-written Chea et al. (2020) framework containing the 'oracle'. It is used for generating training data.
