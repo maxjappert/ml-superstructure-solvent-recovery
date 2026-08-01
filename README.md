@@ -15,7 +15,7 @@ uncertainty decomposition and active learning.
 - Browser-based visualiser
 
 ## Installation
-    git clone git@github.com:maxjappert/ml-superstructure-solvent-recovery.git
+    git clone https://github.com/maxjappert/ml-superstructure-solvent-recovery.git
     pip install -r requirements.txt
 
 Implemented using Python version 3.14.6. A standard CPU is sufficiently powerful for evaluation.
