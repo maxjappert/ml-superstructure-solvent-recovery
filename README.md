@@ -54,4 +54,4 @@ The reported results can be reproduced using the exact configuration (seed and h
 This project was implemented and conceptualised by [Max Jappert](https://maxja.net) in July 2026.
 
 ## License
-The software is property of the [Intitute for Ecopreneurship](https://www.fhnw.ch/en/life-sciences/about/institutes/ecopreneurship) at the [University of Applied Sciences and Arts Northwestern Switzerland  (FHNW)](https://www.fhnw.ch/de).
+The software is property of the [Institute for Ecopreneurship](https://www.fhnw.ch/en/life-sciences/about/institutes/ecopreneurship) at the [University of Applied Sciences and Arts Northwestern Switzerland  (FHNW)](https://www.fhnw.ch/de).
